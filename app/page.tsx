@@ -58,12 +58,17 @@ export default function Home() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-20">
-      <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-8 gap-4">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-start mb-8 gap-4">
         <div>
           <h1 className="text-3xl font-black tracking-tight text-gray-900">Artist Overview</h1>
-          <p className="text-gray-500 mt-1">Apple Music Performance Metrics {artistName && <span className="font-bold text-onerpm-orange">· {artistName}</span>}</p>
+          <p className="text-gray-500 mt-1">Apple Music Performance Metrics</p>
+          {artistName && (
+            <h2 className="text-4xl font-black text-onerpm-orange mt-3 animate-in fade-in duration-700 tracking-tight">
+              {artistName}
+            </h2>
+          )}
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center pt-2 gap-3">
           <input 
             type="text" 
             placeholder="Apple Artist ID (Adam ID)" 
