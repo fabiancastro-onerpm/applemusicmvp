@@ -85,8 +85,11 @@ export async function GET(request: Request) {
       body: JSON.stringify({ ...commonPayload, group_by: ["storefront"] })
     });
 
+    // Solicitud 5: Búsqueda inversa en iTunes Público para el nombre del Artista
+    const itunesReq = fetch(`https://itunes.apple.com/lookup?id=${artistId}`);
+
     // Resolvemos promesas en paralelo
-    const [totRes, citRes, ageRes, storeRes] = await Promise.all([totalReq, citiesReq, ageReq, storeReq]);
+    const [totRes, citRes, ageRes, storeRes, itunesRes] = await Promise.all([totalReq, citiesReq, ageReq, storeReq, itunesReq]);
 
     if (!totRes.ok) {
        const err = await totRes.text();
@@ -97,6 +100,16 @@ export async function GET(request: Request) {
     const tsvCities = await citRes.ok ? await citRes.text() : "";
     const tsvAges = await ageRes.ok ? await ageRes.text() : "";
     const tsvStore = await storeRes.ok ? await storeRes.text() : "";
+    
+    let artistName = "Unknown Artist";
+    if (itunesRes.ok) {
+       try {
+           const itunesData = await itunesRes.json();
+           if (itunesData.results && itunesData.results.length > 0) {
+               artistName = itunesData.results[0].artistName;
+           }
+       } catch(e) {}
+    }
 
     const parsedTotal = parseTSV(tsvTotal);
     const parsedCities = parseTSV(tsvCities);
@@ -111,7 +124,7 @@ export async function GET(request: Request) {
     // Mapeamos Países al formato Frontend (Geo)
     const sortedGeo = parsedStore
         .sort((a, b) => parseInt(b.play_count || "0") - parseInt(a.play_count || "0"))
-        .slice(0, 10) // Limitamos a un top 10 máximo
+        .slice(0, 10) 
         .map(store => ({
             country: (store.storefront || "XX").toUpperCase(),
             value: parseInt(store.play_count || "0")
@@ -122,13 +135,12 @@ export async function GET(request: Request) {
         .sort((a, b) => parseInt(b.play_count || "0") - parseInt(a.play_count || "0"))
         .slice(0, 5)
         .map(cityData => {
-           // consumer_city_name suele venir como "Bogota, Bogota D.C., CO"
            const parts = cityData.consumer_city_name ? cityData.consumer_city_name.split(',') : [];
            const cityName = parts.length > 0 ? parts[0].trim() : "Unknown City";
            const countryName = parts.length > 1 ? parts[parts.length - 1].trim() : "XX";
            return {
              id: cityData.consumer_city,
-             city: cityName, // <--- Aquí estaba el error (se llamaba 'name')
+             city: cityName, 
              country: countryName,
              streams: parseInt(cityData.play_count || "0"),
              percentage: 0 
@@ -140,7 +152,7 @@ export async function GET(request: Request) {
     let totalAgePlays = 0;
     parsedAges.forEach(age => {
         let label = age.age_bucket?.replace("AGE_", "").replace("_TO_", "-").replace("_MAX", "+") || "Unknown";
-        if(label.toUpperCase() === "UNKNOWN") return; // Omitir el cajón de "desconocido" para no ensuciar la gráfica
+        if(label.toUpperCase() === "UNKNOWN") return; 
         const val = parseInt(age.play_count || "0");
         demoFormatObj[label] = (demoFormatObj[label] || 0) + val;
         totalAgePlays += val;
@@ -150,7 +162,7 @@ export async function GET(request: Request) {
         const perc = totalAgePlays > 0 ? Math.round((val / totalAgePlays) * 100) : val;
         return { range, value: perc };
     });
-    // Ordenamos las edades lógicamente (ej. 14-17, 18-24, etc.)
+    // Ordenamos las edades lógicamente
     demoAges.sort((a, b) => a.range.localeCompare(b.range));
 
     const demoPayload = {
@@ -165,6 +177,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       artistId: artistId,
+      artistName: artistName,
       source: "Apple Music Analytics API (Live)",
       data: {
          kpis: { ...MOCK_KPI_DATA, totalStreams, activeListeners: totalListeners },
@@ -172,7 +185,7 @@ export async function GET(request: Request) {
          cities: sortedCities.length > 0 ? sortedCities : MOCK_GEO_CITIES,
          demo: demoAges.length > 0 ? demoPayload : MOCK_DEMO_DATA,
          overlap: MOCK_OVERLAP_DATA,
-         releases: MOCK_RELEASE_DATA, // Falta Release Trajectory
+         releases: MOCK_RELEASE_DATA, 
          raw: { tsvTotal, tsvCities, tsvAges, tsvStore } 
       }
     });

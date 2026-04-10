@@ -17,7 +17,8 @@ import {
 
 export default function Home() {
   const [artistId, setArtistId] = useState("");
-  const [timeFilter, setTimeFilter] = useState("28days");
+  const [artistName, setArtistName] = useState("");
+  const [timeFilter, setTimeFilter] = useState("allTime");
   const [loading, setLoading] = useState(false);
   const [dashboardData, setDashboardData] = useState({
     kpis: MOCK_KPI_DATA,
@@ -37,6 +38,9 @@ export default function Home() {
         const json = await response.json();
         if (json.success && json.data) {
           setDashboardData(json.data);
+          if (json.artistName) {
+             setArtistName(json.artistName);
+          }
           console.log("Success! Pure Apple API Response:", json.raw);
         }
       } else {
@@ -57,7 +61,7 @@ export default function Home() {
       <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-8 gap-4">
         <div>
           <h1 className="text-3xl font-black tracking-tight text-gray-900">Artist Overview</h1>
-          <p className="text-gray-500 mt-1">Apple Music Performance Metrics</p>
+          <p className="text-gray-500 mt-1">Apple Music Performance Metrics {artistName && <span className="font-bold text-onerpm-orange">· {artistName}</span>}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <input 
