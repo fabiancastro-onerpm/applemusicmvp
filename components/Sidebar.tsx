@@ -2,8 +2,18 @@
 
 import { Home, MapPin, Users, Activity, Settings, HelpCircle, Music } from 'lucide-react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
 export default function Sidebar() {
+  const pathname = usePathname();
+
+  const navItems = [
+    { href: "/", label: "Overview", icon: <Home className="w-5 h-5 shrink-0" /> },
+    { href: "/geo", label: "Geo Tracking", icon: <MapPin className="w-5 h-5 shrink-0" /> },
+    { href: "/overlap", label: "Audience Match", icon: <Users className="w-5 h-5 shrink-0" /> },
+    { href: "/tracker", label: "Release Tracker", icon: <Activity className="w-5 h-5 shrink-0" /> },
+  ];
+
   return (
     <aside className="w-64 bg-gray-900 border-r border-gray-800 text-white min-h-screen p-6 flex flex-col fixed left-0 top-0">
       <div className="flex items-center gap-2 mb-12">
@@ -14,30 +24,24 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-2">
-        <Link href="/" className="sidebar-item active">
-          <Home className="w-5 h-5 shrink-0" />
-          <span>Overview</span>
-        </Link>
-        <Link href="/geo" className="sidebar-item">
-          <MapPin className="w-5 h-5 shrink-0" />
-          <span>Geo Tracking</span>
-        </Link>
-        <Link href="/overlap" className="sidebar-item">
-          <Users className="w-5 h-5 shrink-0" />
-          <span>Audience Match</span>
-        </Link>
-        <Link href="/tracker" className="sidebar-item">
-          <Activity className="w-5 h-5 shrink-0" />
-          <span>Release Tracker</span>
-        </Link>
+        {navItems.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`sidebar-item ${pathname === item.href ? 'active' : ''}`}
+          >
+            {item.icon}
+            <span>{item.label}</span>
+          </Link>
+        ))}
       </nav>
 
       <div className="mt-auto space-y-2 pt-8 border-t border-gray-800">
-        <Link href="/settings" className="sidebar-item">
+        <Link href="/settings" className={`sidebar-item ${pathname === '/settings' ? 'active' : ''}`}>
           <Settings className="w-5 h-5 shrink-0" />
           <span>Settings</span>
         </Link>
-        <Link href="/help" className="sidebar-item">
+        <Link href="/help" className={`sidebar-item ${pathname === '/help' ? 'active' : ''}`}>
           <HelpCircle className="w-5 h-5 shrink-0" />
           <span>Help</span>
         </Link>

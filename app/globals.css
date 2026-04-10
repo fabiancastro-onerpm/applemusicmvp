@@ -1,27 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
-  --onerpm-orange: #FF5722;
-  --onerpm-orange-dark: #E64A19;
-  --onerpm-orange-light: #FF8A65;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
+  --onerpm-orange: #f04f23;
+  --onerpm-orange-dark: #d9431c;
+  --onerpm-orange-light: #ff6840;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: white;
+  background: #f9fafb;
+  color: #111827;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
@@ -47,7 +38,7 @@ body {
   }
 
   .btn-primary {
-    @apply bg-[var(--onerpm-orange)] hover:bg-[var(--onerpm-orange-dark)] text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200;
+    @apply bg-[var(--onerpm-orange)] hover:bg-[var(--onerpm-orange-dark)] text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 cursor-pointer;
   }
 }
 
