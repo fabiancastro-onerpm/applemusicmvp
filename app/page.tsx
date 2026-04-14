@@ -3,11 +3,10 @@
 import { useState, useCallback, useRef } from "react";
 import {
   Play, Users, Zap, AlertTriangle, Search, Loader2,
-  Calendar, X, ChevronDown, CheckCircle2, SkipForward,
-  Music, Disc3, BarChart3, Globe2, Brain, Shuffle,
-  Activity, Sparkles, RefreshCw
+  Calendar, X, CheckCircle2, SkipForward,
+  Music, BarChart3, Globe2, Shuffle,
+  Activity, Sparkles, RefreshCw, TrendingUp, Hash
 } from "lucide-react";
-import ArtistHub from "@/components/ArtistHub";
 import GeoMap from "@/components/GeoMap";
 import DemoBreakdown from "@/components/DemoBreakdown";
 import AudienceOverlap from "@/components/AudienceOverlap";
@@ -21,7 +20,12 @@ import {
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 interface DashboardData {
-  kpis: { totalStreams: string; totalListeners: string; completionRate: string | null; skipRate: string | null; rawStreams: number; rawListeners: number };
+  kpis: {
+    totalStreams: string; totalListeners: string;
+    completionRate: string | null; skipRate: string | null;
+    streamsPerListener: string | null;
+    rawStreams: number; rawListeners: number;
+  };
   timeSeries: any[];
   geo: any[];
   cities: any[];
@@ -38,7 +42,10 @@ interface DashboardData {
 }
 
 const EMPTY_DATA: DashboardData = {
-  kpis: { totalStreams: '—', totalListeners: '—', completionRate: null, skipRate: null, rawStreams: 0, rawListeners: 0 },
+  kpis: {
+    totalStreams: '—', totalListeners: '—', completionRate: null,
+    skipRate: null, streamsPerListener: null, rawStreams: 0, rawListeners: 0,
+  },
   timeSeries: [], geo: [], cities: [], age: [], gender: [],
   songs: [], albums: [], streamSources: [], deviceOS: [],
   audioFormat: [], endReasons: [], containerTypes: [], subscriptions: [],
@@ -60,6 +67,9 @@ function getDateRange(days: number) {
 }
 
 // ─── ARTIST SEARCH BAR ────────────────────────────────────────────────────────
+// Supports two modes:
+//  1. Search by name → iTunes API autocomplete
+//  2. Enter numeric Apple Artist ID directly
 function ArtistSearchBar({ onSelect, onClear, selected }: {
   onSelect: (id: string, name: string, artwork: string) => void;
   onClear: () => void;
@@ -68,35 +78,63 @@ function ArtistSearchBar({ onSelect, onClear, selected }: {
   const [term, setTerm] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<'name' | 'id'>('name');
+  const [idInput, setIdInput] = useState('');
+  const [idLoading, setIdLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
-  const search = useCallback(async (q: string) => {
-    if (!q.trim()) { setResults([]); return; }
+  const searchByName = useCallback(async (q: string) => {
+    if (!q.trim() || mode !== 'name') { setResults([]); return; }
     setLoading(true);
     try {
-      const res = await fetch(`/api/itunes-search?term=${encodeURIComponent(q)}&entity=musicArtist&limit=6`);
+      const res = await fetch(`/api/itunes-search?term=${encodeURIComponent(q)}&entity=musicArtist&limit=8`);
       const json = await res.json();
       setResults(json.results || []);
     } finally { setLoading(false); }
-  }, []);
+  }, [mode]);
 
   const handleChange = (val: string) => {
     setTerm(val);
     clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => search(val), 350);
+    debounceRef.current = setTimeout(() => searchByName(val), 350);
+  };
+
+  const lookupById = async () => {
+    const rawId = idInput.trim();
+    if (!rawId) return;
+    setIdLoading(true);
+    try {
+      // Lookup via iTunes
+      const res = await fetch(`https://itunes.apple.com/lookup?id=${rawId}&entity=musicArtist`);
+      const json = await res.json();
+      const artist = json.results?.find((r: any) => r.wrapperType === 'artist');
+      const art = (artist?.artworkUrl100 || '').replace('100x100', '200x200');
+      const name = artist?.artistName || `Artist ${rawId}`;
+      onSelect(rawId, name, art);
+    } catch {
+      // Fallback — just use the ID
+      onSelect(rawId, `Artist ${rawId}`, '');
+    } finally { setIdLoading(false); }
   };
 
   if (selected) {
     return (
-      <div className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-onerpm-orange rounded-2xl shadow-sm min-w-[260px]">
-        {selected.artwork && (
-          <img src={selected.artwork} alt="" className="w-9 h-9 rounded-xl object-cover shadow" />
+      <div className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-onerpm-orange rounded-2xl shadow-sm min-w-[280px]">
+        {selected.artwork ? (
+          <img
+            src={selected.artwork} alt=""
+            className="w-9 h-9 rounded-full object-cover shadow ring-2 ring-onerpm-orange/30 shrink-0"
+          />
+        ) : (
+          <div className="w-9 h-9 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
+            <Music className="w-4 h-4 text-onerpm-orange" />
+          </div>
         )}
         <div className="min-w-0 flex-grow">
           <p className="text-xs text-gray-400 font-medium">Artist</p>
           <p className="font-black text-gray-900 text-sm truncate">{selected.name}</p>
         </div>
-        <button onClick={() => { onClear(); setTerm(''); }} className="text-gray-300 hover:text-gray-600 transition-colors">
+        <button onClick={() => { onClear(); setTerm(''); setIdInput(''); }} className="text-gray-300 hover:text-gray-600 transition-colors shrink-0">
           <X className="w-4 h-4" />
         </button>
       </div>
@@ -104,41 +142,89 @@ function ArtistSearchBar({ onSelect, onClear, selected }: {
   }
 
   return (
-    <div className="relative min-w-[280px]">
-      <div className="flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 rounded-2xl shadow-sm focus-within:border-onerpm-orange focus-within:ring-2 focus-within:ring-onerpm-orange/20 transition-all">
-        {loading ? <Loader2 className="w-4 h-4 text-onerpm-orange animate-spin shrink-0" /> 
-                 : <Search className="w-4 h-4 text-gray-400 shrink-0" />}
-        <input
-          value={term}
-          onChange={e => handleChange(e.target.value)}
-          placeholder="Search artist by name..."
-          className="flex-grow text-sm font-medium outline-none bg-transparent"
-        />
+    <div className="flex flex-col gap-2 min-w-[320px]">
+      {/* Mode toggle */}
+      <div className="flex bg-gray-100 rounded-xl p-1 w-fit">
+        <button
+          onClick={() => { setMode('name'); setResults([]); }}
+          className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${mode === 'name' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+        >
+          🔍 Search by Name
+        </button>
+        <button
+          onClick={() => { setMode('id'); setResults([]); }}
+          className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${mode === 'id' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+        >
+          # Search by ID
+        </button>
       </div>
-      {results.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-2xl shadow-2xl z-50 overflow-hidden">
-          {results.map((r: any, i) => (
-            <button
-              key={r.artistId || i}
-              onClick={() => {
-                const art = (r.artworkUrl100 || '').replace('100x100', '200x200');
-                onSelect(String(r.artistId), r.artistName, art);
-                setResults([]);
-                setTerm(r.artistName);
-              }}
-              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-orange-50 transition-colors text-left"
-            >
-              {r.artworkUrl60
-                ? <img src={r.artworkUrl60} alt="" className="w-10 h-10 rounded-xl object-cover shadow-sm shrink-0" />
-                : <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0"><Music className="w-4 h-4 text-gray-300" /></div>
-              }
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-gray-900 truncate">{r.artistName}</p>
-                <p className="text-xs text-gray-400">{r.primaryGenreName || 'Artist'}</p>
-              </div>
-              <span className="ml-auto text-xs text-gray-300 font-mono shrink-0">{r.artistId}</span>
-            </button>
-          ))}
+
+      {mode === 'name' ? (
+        <div className="relative">
+          <div className="flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 rounded-2xl shadow-sm focus-within:border-onerpm-orange focus-within:ring-2 focus-within:ring-onerpm-orange/20 transition-all">
+            {loading
+              ? <Loader2 className="w-4 h-4 text-onerpm-orange animate-spin shrink-0" />
+              : <Search className="w-4 h-4 text-gray-400 shrink-0" />}
+            <input
+              value={term}
+              onChange={e => handleChange(e.target.value)}
+              placeholder="Artist name e.g. Jey One..."
+              className="flex-grow text-sm font-medium outline-none bg-transparent"
+            />
+            {term && (
+              <button onClick={() => { setTerm(''); setResults([]); }} className="text-gray-300 hover:text-gray-500">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          {results.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-2xl shadow-2xl z-50 overflow-hidden">
+              {results.map((r: any, i) => (
+                <button
+                  key={r.artistId || i}
+                  onClick={() => {
+                    const art = (r.artworkUrl100 || '').replace('100x100', '200x200');
+                    onSelect(String(r.artistId), r.artistName, art);
+                    setResults([]);
+                    setTerm(r.artistName);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-orange-50 transition-colors text-left border-b border-gray-50 last:border-0"
+                >
+                  {/* Circular artist photo */}
+                  {r.artworkUrl60
+                    ? <img src={r.artworkUrl60} alt="" className="w-10 h-10 rounded-full object-cover shadow-sm shrink-0 ring-2 ring-gray-100" />
+                    : <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center shrink-0"><Music className="w-4 h-4 text-gray-300" /></div>
+                  }
+                  <div className="min-w-0 flex-grow">
+                    <p className="text-sm font-bold text-gray-900 truncate">{r.artistName}</p>
+                    <p className="text-xs text-gray-400">{r.primaryGenreName || 'Artist'}</p>
+                  </div>
+                  <span className="text-xs text-gray-300 font-mono shrink-0 bg-gray-50 px-2 py-1 rounded-lg">{r.artistId}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          <div className="flex items-center gap-2 px-4 py-3 bg-white border border-gray-200 rounded-2xl shadow-sm focus-within:border-onerpm-orange focus-within:ring-2 focus-within:ring-onerpm-orange/20 transition-all flex-grow">
+            <Hash className="w-4 h-4 text-gray-400 shrink-0" />
+            <input
+              value={idInput}
+              onChange={e => setIdInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && lookupById()}
+              placeholder="Apple Artist ID e.g. 1534914623"
+              className="flex-grow text-sm font-medium outline-none bg-transparent font-mono"
+              type="number"
+            />
+          </div>
+          <button
+            onClick={lookupById}
+            disabled={!idInput || idLoading}
+            className="btn-primary px-5 rounded-2xl flex items-center gap-2 disabled:opacity-50"
+          >
+            {idLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+          </button>
         </div>
       )}
     </div>
@@ -147,12 +233,12 @@ function ArtistSearchBar({ onSelect, onClear, selected }: {
 
 // ─── TAB CONFIG ──────────────────────────────────────────────────────────────
 const TABS = [
-  { id: 'overview',     label: 'Overview',        icon: BarChart3 },
-  { id: 'catalog',      label: 'Songs & Albums',   icon: Music },
-  { id: 'demographics', label: 'Demographics',     icon: Users },
-  { id: 'geography',    label: 'Geography',        icon: Globe2 },
+  { id: 'overview',     label: 'Overview',          icon: BarChart3 },
+  { id: 'catalog',      label: 'Songs & Albums',     icon: Music },
+  { id: 'demographics', label: 'Demographics',       icon: Users },
+  { id: 'geography',    label: 'Geography',          icon: Globe2 },
   { id: 'behavior',     label: 'Listening Behavior', icon: Activity },
-  { id: 'affinity',     label: 'Audience Affinity', icon: Shuffle },
+  { id: 'affinity',     label: 'Audience Affinity',  icon: Shuffle },
 ];
 
 // ─── KPI CARD ─────────────────────────────────────────────────────────────────
@@ -202,10 +288,7 @@ export default function Home() {
 
       const json = await res.json();
 
-      if (!res.ok) {
-        setNoDataReason(json.error || 'API error');
-        return;
-      }
+      if (!res.ok) { setNoDataReason(json.error || 'API error'); return; }
 
       if (json.success) {
         setData({
@@ -225,8 +308,9 @@ export default function Home() {
           subscriptions: json.subscriptions || [],
         });
         setHasData(json.hasData);
-        if (json.artistName && selectedArtist) {
-          setSelectedArtist(prev => prev ? { ...prev, name: json.artistName } : prev);
+        // Update artist name from Apple (may differ from iTunes)
+        if (json.artistName && json.artistName !== `Artist ${artistId}` && selectedArtist) {
+          setSelectedArtist(prev => prev ? { ...prev } : prev);
         }
         if (!json.hasData && json.noDataReason) setNoDataReason(json.noDataReason);
         setLastUpdated(new Date().toLocaleTimeString());
@@ -238,55 +322,43 @@ export default function Home() {
     }
   };
 
-  const handleGenerate = () => {
-    fetchData(selectedArtist?.id, startDate, endDate);
-  };
+  const handleGenerate = () => fetchData(selectedArtist?.id, startDate, endDate);
 
   // ── RENDER ──────────────────────────────────────────────────────────────────
   return (
     <div className="max-w-[1440px] mx-auto space-y-6 pb-24">
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-5">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-black tracking-tight text-gray-900">
-              Apple Music Intelligence
-            </h1>
-            <p className="text-gray-500 mt-1 text-sm">
-              Real-time analytics from the Apple Music Analytics API
-            </p>
+            <h1 className="text-3xl font-black tracking-tight text-gray-900">Apple Music Intelligence</h1>
+            <p className="text-gray-500 mt-1 text-sm">Real-time analytics from the Apple Music Analytics API</p>
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
-              <Sparkles className="w-3.5 h-3.5" />
-              Live Apple Data
+              <Sparkles className="w-3.5 h-3.5" /> Live Apple Data
             </div>
-            {lastUpdated && (
-              <span className="text-xs text-gray-400">Updated {lastUpdated}</span>
-            )}
+            {lastUpdated && <span className="text-xs text-gray-400">Updated {lastUpdated}</span>}
           </div>
         </div>
 
-        {/* Controls bar */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Artist search */}
+        {/* Controls */}
+        <div className="flex flex-wrap items-end gap-3">
           <ArtistSearchBar
             selected={selectedArtist}
             onSelect={(id, name, artwork) => setSelectedArtist({ id, name, artwork })}
-            onClear={() => { setSelectedArtist(null); setData(EMPTY_DATA); setHasData(false); }}
+            onClear={() => { setSelectedArtist(null); setData(EMPTY_DATA); setHasData(false); setNoDataReason(null); }}
           />
 
           {/* Date presets */}
-          <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-2xl p-1">
+          <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-2xl p-1 self-end">
             {DATE_PRESETS.map(p => (
               <button
                 key={p.days}
                 onClick={() => setSelectedPreset(p.days)}
-                className={`px-3 py-1.5 rounded-xl text-sm font-bold transition-all ${
-                  selectedPreset === p.days
-                    ? 'bg-onerpm-orange text-white shadow-sm'
-                    : 'text-gray-500 hover:text-gray-900'
+                className={`px-3 py-2 rounded-xl text-sm font-bold transition-all ${
+                  selectedPreset === p.days ? 'bg-onerpm-orange text-white shadow-sm' : 'text-gray-500 hover:text-gray-900'
                 }`}
               >
                 {p.label}
@@ -295,51 +367,51 @@ export default function Home() {
           </div>
 
           {/* Date display */}
-          <div className="flex items-center gap-2 text-xs text-gray-500 bg-white border border-gray-200 rounded-xl px-3 py-2">
+          <div className="flex items-center gap-2 text-xs text-gray-500 bg-white border border-gray-200 rounded-xl px-3 py-2.5 self-end">
             <Calendar className="w-3.5 h-3.5" />
             <span>{startDate} → {endDate}</span>
           </div>
 
-          {/* Generate button */}
+          {/* Generate */}
           <button
             onClick={handleGenerate}
             disabled={loading}
-            className="btn-primary flex items-center gap-2 px-6 py-3 rounded-2xl font-bold disabled:opacity-50"
+            className="btn-primary flex items-center gap-2 px-6 py-3 rounded-2xl font-bold disabled:opacity-50 self-end"
           >
-            {loading
-              ? <><Loader2 className="w-4 h-4 animate-spin" /> Loading 14 metrics...</>
-              : <><Zap className="w-4 h-4" /> Generate Report</>
-            }
+            {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Loading...</> : <><Zap className="w-4 h-4" /> Generate Report</>}
           </button>
 
           {hasData && (
-            <button
-              onClick={handleGenerate}
-              className="p-3 text-gray-400 hover:text-gray-700 hover:bg-white border border-gray-200 rounded-xl transition-all"
-              title="Refresh"
-            >
+            <button onClick={handleGenerate} className="p-3 text-gray-400 hover:text-gray-700 hover:bg-white border border-gray-200 rounded-xl transition-all self-end" title="Refresh">
               <RefreshCw className="w-4 h-4" />
             </button>
           )}
         </div>
       </div>
 
-      {/* ── Artist header ──────────────────────────────────────────────────── */}
+      {/* ── Artist Header ──────────────────────────────────────────────────── */}
       {selectedArtist?.name && (
-        <div className="flex items-center gap-4 animate-in slide-in-from-top-2 duration-300">
-          {selectedArtist.artwork && (
-            <img src={selectedArtist.artwork} alt={selectedArtist.name}
-              className="w-16 h-16 rounded-2xl object-cover shadow-lg" />
+        <div className="flex items-center gap-5 animate-in slide-in-from-top-2 duration-300">
+          {selectedArtist.artwork ? (
+            <img
+              src={selectedArtist.artwork}
+              alt={selectedArtist.name}
+              className="w-20 h-20 rounded-full object-cover shadow-xl ring-4 ring-white ring-offset-2 ring-offset-gray-50 shrink-0"
+            />
+          ) : (
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-orange-200 to-orange-300 flex items-center justify-center shadow-xl shrink-0">
+              <Music className="w-8 h-8 text-white" />
+            </div>
           )}
           <div>
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Now viewing</p>
             <h2 className="text-4xl font-black text-gray-900 tracking-tight">{selectedArtist.name}</h2>
-            <p className="text-sm text-gray-400 mt-0.5">ID: {selectedArtist.id}</p>
+            <p className="text-sm text-gray-400 mt-0.5 font-mono">ID: {selectedArtist.id}</p>
           </div>
         </div>
       )}
 
-      {/* ── No Data Warning ─────────────────────────────────────────────────── */}
+      {/* ── Warning ────────────────────────────────────────────────────────────*/}
       {noDataReason && (
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl px-5 py-4 animate-in fade-in duration-300">
           <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0 text-amber-500" />
@@ -350,11 +422,18 @@ export default function Home() {
         </div>
       )}
 
-      {/* ── KPI Row (always visible once loaded) ───────────────────────────── */}
+      {/* ── KPIs ────────────────────────────────────────────────────────────── */}
       {hasData && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-in slide-in-from-bottom-2 duration-400">
-          <KpiCard label="Total Streams"    value={data.kpis.totalStreams}   icon={Play}         color="bg-onerpm-orange" />
-          <KpiCard label="Active Listeners" value={data.kpis.totalListeners} icon={Users}        color="bg-blue-500" />
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 animate-in slide-in-from-bottom-2 duration-400">
+          <KpiCard label="Total Streams"      value={data.kpis.totalStreams}            icon={Play}          color="bg-onerpm-orange" />
+          <KpiCard label="Active Listeners"   value={data.kpis.totalListeners}          icon={Users}         color="bg-blue-500" />
+          <KpiCard
+            label="Streams / Listener"
+            value={data.kpis.streamsPerListener ?? '—'}
+            icon={TrendingUp}
+            color="bg-violet-500"
+            sub="avg plays per fan"
+          />
           <KpiCard
             label="Completion Rate"
             value={data.kpis.completionRate ?? '—'}
@@ -374,7 +453,7 @@ export default function Home() {
 
       {/* ── Tabs ────────────────────────────────────────────────────────────── */}
       {hasData && (
-        <div className="border-b border-gray-200 -mb-2">
+        <div className="border-b border-gray-200">
           <div className="flex gap-1 overflow-x-auto pb-px">
             {TABS.map(tab => {
               const Icon = tab.icon;
@@ -397,7 +476,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ── Empty state ─────────────────────────────────────────────────────── */}
+      {/* ── Empty state ──────────────────────────────────────────────────────── */}
       {!hasData && !loading && !noDataReason && (
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <div className="w-20 h-20 rounded-3xl bg-orange-50 flex items-center justify-center mb-6">
@@ -405,11 +484,10 @@ export default function Home() {
           </div>
           <h2 className="text-2xl font-black text-gray-900 mb-2">Ready to analyze</h2>
           <p className="text-gray-500 max-w-md">
-            Search for an artist, select a date range, and click <strong>Generate Report</strong> to unlock
-            14 dimensions of real Apple Music data.
+            Search an artist by name or Apple ID, select a date range, and click <strong>Generate Report</strong>.
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-8 text-left max-w-lg">
-            {['Streams & Listeners', 'Global Distribution', 'Age & Gender', 'Top Songs & Albums', 'Audio Format Quality', 'Audience Affinity'].map(f => (
+            {['Streams & Listeners', 'Global Distribution', 'Age & Gender', 'Top Songs & Albums', 'Audio Format Quality', 'Audience Affinity', 'Streams per Listener', 'Listen Completion', 'Song Previews'].map(f => (
               <div key={f} className="flex items-center gap-2 text-sm text-gray-600 bg-white border border-gray-100 rounded-xl px-3 py-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                 {f}
@@ -419,9 +497,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ─────────────────────────────────────────────────────────────────────
-          TAB CONTENT
-      ───────────────────────────────────────────────────────────────────── */}
+      {/* ── Tab Content ──────────────────────────────────────────────────────── */}
       {hasData && activeTab === 'overview' && (
         <div className="space-y-6 animate-in fade-in duration-300">
           <TimeSeriesChart data={data.timeSeries} />

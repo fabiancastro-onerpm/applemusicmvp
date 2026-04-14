@@ -242,13 +242,27 @@ export async function POST(request: Request) {
     // ── Audio Format ────────────────────────────────────────────────────────
     const audioTotal = rowAudioFmt.reduce((s, r) => s + toInt(r.play_count), 0);
     const audioLabelMap: Record<string, string> = {
-      LOSSY: 'Standard (AAC)', LOSSLESS: 'Lossless (ALAC)', IMMERSIVE: 'Spatial Audio (Dolby)'
+      LOSSY:             'Standard (AAC)',
+      COMPRESSED_AUDIO:  'Standard (AAC)',
+      AAC:               'Standard (AAC)',
+      LOSSLESS:          'Lossless (ALAC)',
+      ALAC:              'Lossless (ALAC)',
+      IMMERSIVE:         'Spatial Audio',
+      DOLBY_ATMOS:       'Spatial Audio',
+      SPATIAL:           'Spatial Audio',
+      ATMOS:             'Spatial Audio',
     };
-    const audioFormat = rowAudioFmt
-      .map(r => ({
-        format: audioLabelMap[r.audio_format?.toUpperCase() || ''] || r.audio_format || 'Unknown',
-        streams: toInt(r.play_count),
-        pct: calcPct(toInt(r.play_count), audioTotal),
+    // Merge duplicate labels after mapping
+    const audioMerged: Record<string, number> = {};
+    for (const r of rowAudioFmt) {
+      const label = audioLabelMap[r.audio_format?.toUpperCase() || ''] || r.audio_format || 'Other';
+      audioMerged[label] = (audioMerged[label] || 0) + toInt(r.play_count);
+    }
+    const audioFormat = Object.entries(audioMerged)
+      .map(([format, streams]) => ({
+        format,
+        streams,
+        pct: calcPct(streams, audioTotal),
       }))
       .filter(r => r.streams > 0)
       .sort((a, b) => b.streams - a.streams);
@@ -316,6 +330,7 @@ export async function POST(request: Request) {
         totalListeners: fmtN(totalListeners),
         completionRate: completionRate !== null ? `${completionRate}%` : null,
         skipRate: skipRate !== null ? `${skipRate}%` : null,
+        streamsPerListener: totalListeners > 0 ? (totalStreams / totalListeners).toFixed(1) : null,
         rawStreams: totalStreams,
         rawListeners: totalListeners,
       },

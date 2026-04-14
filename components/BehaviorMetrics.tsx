@@ -145,9 +145,10 @@ export function DeviceOSCard({ data }: { data: { os: string; streams: number; pc
 // ─── AUDIO FORMAT ─────────────────────────────────────────────────────────────
 export function AudioFormatCard({ data }: { data: { format: string; streams: number; pct: number }[] }) {
   const colors: Record<string, string> = {
-    'Spatial Audio (Dolby)': '#a855f7',
+    'Spatial Audio':  '#a855f7',
     'Lossless (ALAC)': '#22c55e',
     'Standard (AAC)': '#94a3b8',
+    'Other':          '#e2e8f0',
   };
   return (
     <div className="card">
