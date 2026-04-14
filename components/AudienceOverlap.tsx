@@ -1,18 +1,22 @@
 "use client";
 
 import { useState, useCallback, useRef } from 'react';
-import { Users, Zap, Search, Loader2, X, Music, Info } from 'lucide-react';
+import { Users, Zap, Search, Loader2, X, Music, Info, TrendingUp, ArrowRight } from 'lucide-react';
 
 interface OverlapSummary {
   primaryListeners: string;
   secondaryListeners: string;
   sharedListeners: string;
   overlapPct: number;
+  reverseOverlapPct?: number;
   rawPrimary: number;
   rawSecondary: number;
   rawOverlap: number;
+  primaryDiffListeners?: string;
   primaryPlays?: number;
   secondaryPlays?: number;
+  capturedPlays?: number;
+  secondaryCapturedPlays?: number;
 }
 
 interface AudienceOverlapProps {
@@ -22,14 +26,14 @@ interface AudienceOverlapProps {
   endDate: string;
 }
 
-// ─── ARTIST SEARCH FOR COMPARISON ────────────────────────────────────────────
+// ─── ARTIST SEARCH ────────────────────────────────────────────────────────────
 function ArtistSearchInline({
   onSelect
 }: { onSelect: (id: string, name: string, artwork: string) => void }) {
   const [term, setTerm] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selected, setSelectedInternal] = useState<{ id: string; name: string; artwork: string } | null>(null);
+  const [selected, setSelectedLocal] = useState<{ id: string; name: string; artwork: string } | null>(null);
   const [idMode, setIdMode] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -37,9 +41,32 @@ function ArtistSearchInline({
     if (!q.trim()) { setResults([]); return; }
     setLoading(true);
     try {
-      const res = await fetch(`/api/itunes-search?term=${encodeURIComponent(q)}&entity=musicArtist&limit=6`);
-      const json = await res.json();
-      setResults(json.results || []);
+      // Search for songs by artist to get artwork
+      const [artistRes, songRes] = await Promise.all([
+        fetch(`/api/itunes-search?term=${encodeURIComponent(q)}&entity=musicArtist&limit=8`),
+        fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&entity=song&limit=20&media=music`),
+      ]);
+      const artistJson = await artistRes.json();
+      const songJson = await songRes.json();
+
+      // Build artwork map from songs: artistId → artworkUrl
+      const artworkMap: Record<string, string> = {};
+      for (const song of (songJson.results || [])) {
+        const aid = String(song.artistId || '');
+        if (aid && !artworkMap[aid] && song.artworkUrl100) {
+          artworkMap[aid] = song.artworkUrl100.replace('100x100', '200x200');
+        }
+      }
+
+      // Merge artwork into artist results
+      const artists = (artistJson.results || []).map((a: any) => ({
+        ...a,
+        artworkUrl60: artworkMap[String(a.artistId)] ?
+          artworkMap[String(a.artistId)].replace('200x200', '60x60') : null,
+        artworkUrl200: artworkMap[String(a.artistId)] || null,
+      }));
+
+      setResults(artists);
     } finally { setLoading(false); }
   }, []);
 
@@ -50,8 +77,7 @@ function ArtistSearchInline({
   };
 
   const selectArtist = (id: string, name: string, artwork: string) => {
-    const s = { id, name, artwork };
-    setSelectedInternal(s);
+    setSelectedLocal({ id, name, artwork });
     onSelect(id, name, artwork);
     setResults([]);
     setTerm(name);
@@ -62,12 +88,15 @@ function ArtistSearchInline({
     if (!rawId || isNaN(Number(rawId))) return;
     setLoading(true);
     try {
-      const res = await fetch(`https://itunes.apple.com/lookup?id=${rawId}&entity=musicArtist`);
+      const res = await fetch(`https://itunes.apple.com/lookup?id=${rawId}&entity=song&limit=5`);
       const json = await res.json();
       const artist = json.results?.find((r: any) => r.wrapperType === 'artist');
-      const art = (artist?.artworkUrl100 || '').replace('100x100', '200x200');
+      const song = json.results?.find((r: any) => r.wrapperType === 'track' && r.artworkUrl100);
+      const art = song ? song.artworkUrl100.replace('100x100', '200x200') : '';
       const name = artist?.artistName || `Artist ${rawId}`;
       selectArtist(rawId, name, art);
+    } catch {
+      selectArtist(rawId, `Artist ${rawId}`, '');
     } finally { setLoading(false); }
   };
 
@@ -82,7 +111,7 @@ function ArtistSearchInline({
           <p className="font-bold text-sm text-gray-900 truncate">{selected.name}</p>
           <p className="text-xs text-gray-400 font-mono">ID: {selected.id}</p>
         </div>
-        <button onClick={() => { setSelectedInternal(null); setTerm(''); }} className="text-gray-400 hover:text-gray-700 shrink-0">
+        <button onClick={() => { setSelectedLocal(null); setTerm(''); }} className="text-gray-400 hover:text-gray-700 shrink-0">
           <X className="w-4 h-4" />
         </button>
       </div>
@@ -93,10 +122,12 @@ function ArtistSearchInline({
     <div className="relative">
       <div className="flex gap-2 mb-2">
         <div className="flex bg-gray-100 rounded-xl p-1">
-          <button onClick={() => setIdMode(false)} className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${!idMode ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
+          <button onClick={() => { setIdMode(false); setResults([]); }}
+            className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${!idMode ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
             🔍 Name
           </button>
-          <button onClick={() => setIdMode(true)} className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${idMode ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
+          <button onClick={() => { setIdMode(true); setResults([]); }}
+            className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${idMode ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
             # ID
           </button>
         </div>
@@ -122,11 +153,11 @@ function ArtistSearchInline({
       </div>
 
       {results.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-2xl shadow-2xl z-50 overflow-hidden">
+        <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-2xl shadow-2xl z-50 overflow-hidden max-h-80 overflow-y-auto">
           {results.map((r: any, i) => (
             <button
               key={r.artistId || i}
-              onClick={() => selectArtist(String(r.artistId), r.artistName, (r.artworkUrl100 || '').replace('100x100', '200x200'))}
+              onClick={() => selectArtist(String(r.artistId), r.artistName, r.artworkUrl200 || '')}
               className="w-full flex items-center gap-3 px-4 py-3 hover:bg-orange-50 transition-colors text-left border-b border-gray-50 last:border-0"
             >
               {r.artworkUrl60
@@ -147,67 +178,72 @@ function ArtistSearchInline({
 }
 
 // ─── VENN DIAGRAM ─────────────────────────────────────────────────────────────
-function VennDiagram({ pct, primaryName, secondaryName, summary }: {
-  pct: number; primaryName: string; secondaryName: string; summary: OverlapSummary;
+function VennDiagram({ summary, primaryName, secondaryName }: {
+  summary: OverlapSummary; primaryName: string; secondaryName: string;
 }) {
-  // Dynamically adjust circle overlap based on pct
-  const overlapOffset = Math.max(0, 60 - Math.min(pct, 60));
-  const cx1 = 90 - (overlapOffset > 30 ? 10 : 0);
-  const cx2 = 150 + (overlapOffset > 30 ? 10 : 0);
+  const pct = summary.overlapPct;
+  // Scale the circle overlap visually
+  const overlapScale = Math.min(pct / 50, 1); // normalized 0-1
+  const gap = 60 - (overlapScale * 50); // gap decreases with higher overlap
 
   return (
     <div className="flex flex-col items-center gap-6 py-6">
-      <div className="relative w-72 h-44">
-        <svg viewBox="0 0 280 160" className="w-full h-full">
+      <div className="relative w-80 h-48">
+        <svg viewBox="0 0 320 180" className="w-full h-full">
           <defs>
-            <radialGradient id="g1" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#f04f23" stopOpacity="0.4" />
-              <stop offset="100%" stopColor="#f04f23" stopOpacity="0.15" />
+            <radialGradient id="gPrimary" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#f04f23" stopOpacity="0.5" />
+              <stop offset="100%" stopColor="#f04f23" stopOpacity="0.12" />
             </radialGradient>
-            <radialGradient id="g2" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#6366f1" stopOpacity="0.4" />
-              <stop offset="100%" stopColor="#6366f1" stopOpacity="0.15" />
+            <radialGradient id="gSecondary" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#6366f1" stopOpacity="0.5" />
+              <stop offset="100%" stopColor="#6366f1" stopOpacity="0.12" />
             </radialGradient>
           </defs>
-          <circle cx={cx1} cy="80" r="68" fill="url(#g1)" stroke="#f04f23" strokeWidth="1.5" />
-          <circle cx={cx2} cy="80" r="68" fill="url(#g2)" stroke="#6366f1" strokeWidth="1.5" />
-          <text x={cx1 - 20} y="80" textAnchor="middle" fontSize="9" fontWeight="700" fill="#f04f23" opacity="0.9">
-            {primaryName.slice(0, 9)}
+          {/* Primary circle */}
+          <circle cx={100} cy="90" r="72" fill="url(#gPrimary)" stroke="#f04f23" strokeWidth="2" />
+          {/* Secondary circle */}
+          <circle cx={100 + gap + 60} cy="90" r="72" fill="url(#gSecondary)" stroke="#6366f1" strokeWidth="2" />
+          {/* Labels */}
+          <text x={70} y="90" textAnchor="middle" fontSize="10" fontWeight="700" fill="#f04f23">
+            {primaryName.length > 10 ? primaryName.slice(0, 9) + '…' : primaryName}
           </text>
-          <text x={cx2 + 20} y="80" textAnchor="middle" fontSize="9" fontWeight="700" fill="#6366f1" opacity="0.9">
-            {secondaryName.slice(0, 9)}
+          <text x={190 + gap - 20} y="90" textAnchor="middle" fontSize="10" fontWeight="700" fill="#6366f1">
+            {secondaryName.length > 10 ? secondaryName.slice(0, 9) + '…' : secondaryName}
           </text>
-          <text x={(cx1 + cx2) / 2} y="72" textAnchor="middle" fontSize="18" fontWeight="900" fill="#1f2937">
+          {/* Overlap center */}
+          <text x={130 + gap / 2} y="82" textAnchor="middle" fontSize="22" fontWeight="900" fill="#1f2937">
             {pct}%
           </text>
-          <text x={(cx1 + cx2) / 2} y="92" textAnchor="middle" fontSize="9" fill="#6b7280">
+          <text x={130 + gap / 2} y="100" textAnchor="middle" fontSize="10" fill="#6b7280" fontWeight="600">
             shared
           </text>
         </svg>
       </div>
 
+      {/* Stats grid */}
       <div className="grid grid-cols-3 gap-4 w-full">
-        <div className="text-center p-3 bg-red-50 rounded-2xl border border-red-100">
-          <p className="text-xs text-red-400 font-bold mb-1 truncate">{primaryName.slice(0, 10)}</p>
-          <p className="text-xl font-black text-gray-900">{summary.primaryListeners}</p>
-          <p className="text-xs text-gray-400">listeners</p>
+        <div className="text-center p-4 bg-red-50 rounded-2xl border border-red-100">
+          <p className="text-xs text-red-500 font-bold mb-1.5 truncate">{primaryName}</p>
+          <p className="text-2xl font-black text-gray-900">{summary.primaryListeners}</p>
+          <p className="text-xs text-gray-400 mt-0.5">listeners</p>
         </div>
-        <div className="text-center p-3 bg-orange-50 rounded-2xl border border-orange-200">
-          <p className="text-xs text-onerpm-orange font-bold mb-1">SHARED</p>
-          <p className="text-xl font-black text-onerpm-orange">{summary.sharedListeners}</p>
-          <p className="text-xs text-gray-400">listeners</p>
+        <div className="text-center p-4 bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl border-2 border-orange-200 shadow-sm">
+          <p className="text-xs text-onerpm-orange font-black mb-1.5 uppercase tracking-wider">Shared</p>
+          <p className="text-2xl font-black text-onerpm-orange">{summary.sharedListeners}</p>
+          <p className="text-xs text-gray-400 mt-0.5">listeners in common</p>
         </div>
-        <div className="text-center p-3 bg-indigo-50 rounded-2xl border border-indigo-100">
-          <p className="text-xs text-indigo-400 font-bold mb-1 truncate">{secondaryName.slice(0, 10)}</p>
-          <p className="text-xl font-black text-gray-900">{summary.secondaryListeners}</p>
-          <p className="text-xs text-gray-400">listeners</p>
+        <div className="text-center p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
+          <p className="text-xs text-indigo-500 font-bold mb-1.5 truncate">{secondaryName}</p>
+          <p className="text-2xl font-black text-gray-900">{summary.secondaryListeners}</p>
+          <p className="text-xs text-gray-400 mt-0.5">listeners</p>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── MAIN EXPORT ──────────────────────────────────────────────────────────────
+// ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 export default function AudienceOverlapCard({
   primaryArtistId, primaryArtistName, startDate, endDate
 }: AudienceOverlapProps) {
@@ -242,8 +278,9 @@ export default function AudienceOverlapCard({
     }
   };
 
-  const summary = result?.summary;
+  const summary: OverlapSummary | null = result?.summary ?? null;
   const overlapPct = summary?.overlapPct ?? 0;
+  const reverseOverlapPct = summary?.reverseOverlapPct ?? 0;
 
   return (
     <div className="card">
@@ -262,9 +299,10 @@ export default function AudienceOverlapCard({
         </div>
       </div>
 
+      {/* Search */}
       <div className="mb-5">
         <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Compare against</p>
-        <ArtistSearchInline onSelect={(id, name, artwork) => { setSecondaryId(id); setSecondaryName(name); }} />
+        <ArtistSearchInline onSelect={(id, name) => { setSecondaryId(id); setSecondaryName(name); }} />
       </div>
 
       <button
@@ -276,6 +314,7 @@ export default function AudienceOverlapCard({
         {loading ? 'Calculating shared audience...' : 'Calculate Audience Overlap'}
       </button>
 
+      {/* Error */}
       {error && (
         <div className="mt-4 p-4 bg-red-50 border border-red-100 rounded-xl">
           <p className="text-sm text-red-600 font-bold mb-1">Error</p>
@@ -283,53 +322,81 @@ export default function AudienceOverlapCard({
         </div>
       )}
 
+      {/* Results */}
       {result && summary && (
-        <div className="mt-6 border-t border-gray-100 pt-6">
-          <VennDiagram
-            pct={overlapPct}
-            primaryName={primaryArtistName}
-            secondaryName={secondaryName}
-            summary={summary}
-          />
+        <div className="mt-6 border-t border-gray-100 pt-6 space-y-5">
+          <VennDiagram summary={summary} primaryName={primaryArtistName} secondaryName={secondaryName} />
 
-          {/* Insight */}
-          <div className="mt-4 p-4 bg-orange-50 border border-orange-100 rounded-2xl">
-            <p className="text-sm text-gray-700 leading-relaxed">
-              <span className="font-black text-onerpm-orange text-base">{overlapPct}%</span>{' '}
-              of <span className="font-bold">{primaryArtistName}</span>&apos;s listeners also played{' '}
-              <span className="font-bold">{secondaryName}</span>{' — '}
-              {overlapPct >= 40
-                ? '🔥 Very strong affinity! Cross-promotion and joint campaigns highly recommended.'
-                : overlapPct >= 20
-                ? '👍 Moderate affinity. Good candidate for collaborative playlists and campaigns.'
-                : overlapPct > 0
-                ? '💡 Low overlap — distinct fanbases. Cross-exposure could drive new reach.'
-                : '⚠️ No measurable shared audience in this date range. Try expanding the period or verifying the Apple Artist IDs.'}
-            </p>
+          {/* Bidirectional insight cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 bg-red-50 border border-red-100 rounded-2xl">
+              <div className="flex items-center gap-2 mb-2">
+                <ArrowRight className="w-4 h-4 text-red-400" />
+                <span className="text-xs font-bold text-red-500 uppercase">Primary → Secondary</span>
+              </div>
+              <p className="text-2xl font-black text-gray-900">{overlapPct}%</p>
+              <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                of <span className="font-bold">{primaryArtistName}</span>&apos;s listeners also listen to <span className="font-bold">{secondaryName}</span>
+              </p>
+            </div>
+            <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl">
+              <div className="flex items-center gap-2 mb-2">
+                <ArrowRight className="w-4 h-4 text-indigo-400" />
+                <span className="text-xs font-bold text-indigo-500 uppercase">Secondary → Primary</span>
+              </div>
+              <p className="text-2xl font-black text-gray-900">{reverseOverlapPct}%</p>
+              <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                of <span className="font-bold">{secondaryName}</span>&apos;s listeners also listen to <span className="font-bold">{primaryArtistName}</span>
+              </p>
+            </div>
           </div>
 
-          {/* Debug panel — visible when 0% */}
-          {(overlapPct === 0 || showDebug) && result.debug && (
-            <div className="mt-4">
-              <button
-                onClick={() => setShowDebug(!showDebug)}
-                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 mb-2"
-              >
-                <Info className="w-3 h-3" />
-                {showDebug ? 'Hide' : 'Show'} API debug info
-              </button>
-              {showDebug && (
-                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-xs font-mono overflow-auto max-h-48">
-                  <p className="text-gray-500 mb-2 font-sans font-bold">API response fields:</p>
-                  <p className="text-gray-600 mb-2">{result.debug.fields?.join(', ')}</p>
-                  <p className="text-gray-500 mb-1 font-sans font-bold">Raw values:</p>
-                  <pre className="text-gray-700">{JSON.stringify(result.debug.rawValues, null, 2)}</pre>
-                  <p className="text-gray-500 mt-2 mb-1 font-sans font-bold">Raw preview:</p>
-                  <pre className="text-gray-600 whitespace-pre-wrap break-all">{result.debug.rawPreview}</pre>
-                </div>
-              )}
+          {/* A&R Recommendation */}
+          <div className="p-5 bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-2xl">
+            <div className="flex items-start gap-3">
+              <TrendingUp className="w-5 h-5 text-onerpm-orange mt-0.5 shrink-0" />
+              <div>
+                <p className="font-bold text-gray-900 text-sm mb-1">A&R Recommendation</p>
+                <p className="text-sm text-gray-700 leading-relaxed">
+                  {overlapPct >= 30
+                    ? `🔥 Very strong affinity (${overlapPct}%). ${summary.sharedListeners} shared listeners make this a prime collaboration opportunity. Joint single or feature would reach an already-engaged audience.`
+                    : overlapPct >= 15
+                    ? `👍 Solid affinity (${overlapPct}%). ${summary.sharedListeners} shared listeners represent a meaningful audience bridge. A featured track, remix, or joint playlist placement could drive significant cross-pollination.`
+                    : overlapPct >= 5
+                    ? `💡 Moderate overlap (${overlapPct}%). ${summary.sharedListeners} shared listeners indicate potential for audience growth. A collaboration could introduce each artist to new fans from the other's base.`
+                    : overlapPct > 0
+                    ? `📊 Low but measurable overlap (${overlapPct}%). ${summary.sharedListeners} shared listeners, representing an opportunity to grow cross-exposure. Consider playlist co-placement or a shared campaign.`
+                    : `⚠️ No shared audience detected in this date range. Check the date range or artist IDs.`}
+                </p>
+                {reverseOverlapPct > overlapPct && reverseOverlapPct > 0 && (
+                  <p className="text-xs text-orange-600 font-medium mt-2">
+                    💡 Note: {secondaryName} has a higher reverse affinity ({reverseOverlapPct}%), suggesting their audience is already familiar with {primaryArtistName}.
+                  </p>
+                )}
+              </div>
             </div>
-          )}
+          </div>
+
+          {/* Debug panel */}
+          <div>
+            <button
+              onClick={() => setShowDebug(!showDebug)}
+              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600"
+            >
+              <Info className="w-3 h-3" />
+              {showDebug ? 'Hide' : 'Show'} API debug info
+            </button>
+            {showDebug && result.debug && (
+              <div className="mt-2 bg-gray-50 border border-gray-200 rounded-xl p-4 text-xs font-mono overflow-auto max-h-52">
+                <p className="text-gray-500 mb-1 font-sans font-bold">Fields:</p>
+                <p className="text-gray-600 mb-2">{result.debug.fields?.join(', ')}</p>
+                <p className="text-gray-500 mb-1 font-sans font-bold">Parsed values:</p>
+                <pre className="text-gray-700">{JSON.stringify(result.debug.rawValues, null, 2)}</pre>
+                <p className="text-gray-500 mt-2 mb-1 font-sans font-bold">Raw TSV preview:</p>
+                <pre className="text-gray-600 whitespace-pre-wrap break-all">{result.debug.rawPreview}</pre>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

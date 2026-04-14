@@ -104,11 +104,12 @@ function ArtistSearchBar({ onSelect, onClear, selected }: {
     if (!rawId) return;
     setIdLoading(true);
     try {
-      // Lookup via iTunes
-      const res = await fetch(`https://itunes.apple.com/lookup?id=${rawId}&entity=musicArtist`);
+      // Lookup artist AND their songs to get artwork (musicArtist entity has no artwork)
+      const res = await fetch(`https://itunes.apple.com/lookup?id=${rawId}&entity=song&limit=5`);
       const json = await res.json();
       const artist = json.results?.find((r: any) => r.wrapperType === 'artist');
-      const art = (artist?.artworkUrl100 || '').replace('100x100', '200x200');
+      const song = json.results?.find((r: any) => r.wrapperType === 'track' && r.artworkUrl100);
+      const art = song ? song.artworkUrl100.replace('100x100', '200x200') : '';
       const name = artist?.artistName || `Artist ${rawId}`;
       onSelect(rawId, name, art);
     } catch {

@@ -45,7 +45,7 @@ export async function POST(request: Request) {
 
     const rawText = await res.text();
     console.log('[Overlap] HTTP status:', res.status);
-    console.log('[Overlap] Raw response (first 800 chars):', rawText.slice(0, 800));
+    console.log('[Overlap] Raw response (first 1200 chars):', rawText.slice(0, 1200));
 
     if (!res.ok) {
       return NextResponse.json(
@@ -55,80 +55,78 @@ export async function POST(request: Request) {
     }
 
     const rows = parseTSV(rawText);
-    console.log('[Overlap] Parsed rows:', rows.length, 'First row keys:', rows[0] ? Object.keys(rows[0]) : []);
+    console.log('[Overlap] Parsed rows:', rows.length);
+    if (rows[0]) {
+      console.log('[Overlap] Fields:', Object.keys(rows[0]));
+      console.log('[Overlap] Values:', JSON.stringify(rows[0]));
+    }
 
     if (rows.length === 0) {
       return NextResponse.json({
         success: true,
         hasData: false,
-        debug: { rawPreview: rawText.slice(0, 400) },
+        debug: { rawPreview: rawText.slice(0, 600) },
         summary: null,
       });
     }
 
     const first = rows[0];
 
-    // Apple might use different field names — try all known variants
-    const primaryTotal =
-      toInt(first.primary_audience_lc) ||
-      toInt(first.primary_unique_listeners) ||
-      toInt(first['primary_audience.lc']) ||
-      toInt(first.primary_lc) ||
-      0;
+    // ─── CORRECT FIELD MAPPING ─────────────────────────────────────────────
+    // Apple's audience-overlap TSV uses these exact fields:
+    //   comparison              = "artist_id X vs Y"
+    //   primary_audience_lc     = unique listeners of primary artist
+    //   primary_difference_lc   = listeners of primary who did NOT listen to secondary
+    //   captured_lc             = SHARED/OVERLAP listeners (both artists)
+    //   secondary_audience_lc   = unique listeners of secondary artist
+    //   *_pc                    = play counts (not listener counts)
 
-    const secondaryTotal =
-      toInt(first.secondary_audience_lc) ||
-      toInt(first.secondary_unique_listeners) ||
-      toInt(first['secondary_audience.lc']) ||
-      toInt(first.secondary_lc) ||
-      0;
+    const primaryTotal    = toInt(first.primary_audience_lc);
+    const secondaryTotal  = toInt(first.secondary_audience_lc);
+    const overlapCount    = toInt(first.captured_lc);   // THIS is the overlap!
+    const primaryDiff     = toInt(first.primary_difference_lc);
 
-    const overlapCount =
-      toInt(first.overlap_lc) ||
-      toInt(first.overlap_unique_listeners) ||
-      toInt(first['overlap.lc']) ||
-      toInt(first.unique_overlap) ||
-      toInt(first.intersection_lc) ||
-      0;
+    // Play counts
+    const primaryPlays    = toInt(first.primary_audience_pc);
+    const secondaryPlays  = toInt(first.secondary_audience_pc);
+    const capturedPlays   = toInt(first.primary_captured_pc);
+    const secondaryCapturedPlays = toInt(first.secondary_captured_pc);
 
-    // Also try plays
-    const primaryPlays =
-      toInt(first.primary_audience_plays) ||
-      toInt(first.primary_plays) ||
-      0;
+    // Overlap percentage: shared / primary total
+    const overlapPct = primaryTotal > 0
+      ? Math.round((overlapCount / primaryTotal) * 100 * 10) / 10  // 1 decimal
+      : 0;
 
-    const secondaryPlays =
-      toInt(first.secondary_audience_plays) ||
-      toInt(first.secondary_plays) ||
-      0;
+    // Reverse overlap: shared / secondary total
+    const reverseOverlapPct = secondaryTotal > 0
+      ? Math.round((overlapCount / secondaryTotal) * 100 * 10) / 10
+      : 0;
 
-    const overlapPlays =
-      toInt(first.overlap_plays) ||
-      0;
-
-    const overlapPct = primaryTotal > 0 ? Math.round((overlapCount / primaryTotal) * 100) : 0;
+    console.log('[Overlap] Results:', { primaryTotal, secondaryTotal, overlapCount, overlapPct, reverseOverlapPct });
 
     return NextResponse.json({
       success: true,
-      hasData: overlapCount > 0 || primaryTotal > 0,
+      hasData: primaryTotal > 0,
       debug: {
         fields: Object.keys(first),
-        rawValues: { primaryTotal, secondaryTotal, overlapCount },
-        rawPreview: rawText.slice(0, 200),
+        rawValues: { primaryTotal, secondaryTotal, overlapCount, primaryDiff },
+        rawPreview: rawText.slice(0, 300),
       },
       summary: {
         primaryListeners: fmtN(primaryTotal),
         secondaryListeners: fmtN(secondaryTotal),
         sharedListeners: fmtN(overlapCount),
         overlapPct,
+        reverseOverlapPct,
         rawPrimary: primaryTotal,
         rawSecondary: secondaryTotal,
         rawOverlap: overlapCount,
+        primaryDiffListeners: fmtN(primaryDiff),
         primaryPlays,
         secondaryPlays,
-        overlapPlays,
+        capturedPlays,
+        secondaryCapturedPlays,
       },
-      rows: rows.map(r => ({ ...r })),
     });
 
   } catch (err: any) {
