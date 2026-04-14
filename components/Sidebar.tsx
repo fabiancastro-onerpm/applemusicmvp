@@ -1,6 +1,8 @@
 "use client";
 
-import { Home, MapPin, Users, Activity, Settings, HelpCircle, Music } from 'lucide-react';
+import {
+  BarChart3, Globe2, Users, Activity, Music, Shuffle, Home, Settings, HelpCircle
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -8,23 +10,61 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   const navItems = [
-    { href: "/", label: "Overview", icon: <Home className="w-5 h-5 shrink-0" /> },
-    { href: "/geo", label: "Geo Tracking", icon: <MapPin className="w-5 h-5 shrink-0" /> },
-    { href: "/overlap", label: "Audience Match", icon: <Users className="w-5 h-5 shrink-0" /> },
-    { href: "/tracker", label: "Release Tracker", icon: <Activity className="w-5 h-5 shrink-0" /> },
+    { href: '/', label: 'Dashboard',        icon: <Home  className="w-5 h-5 shrink-0" /> },
   ];
 
   return (
-    <aside className="w-64 bg-gray-900 border-r border-gray-800 text-white min-h-screen p-6 flex flex-col fixed left-0 top-0">
-      <div className="flex items-center gap-2 mb-12">
-        <Music className="w-8 h-8 text-onerpm-orange" />
-        <h1 className="text-xl font-black tracking-tight leading-none">
-          ONErpm<br/><span className="text-sm font-medium text-gray-400">Apple Command</span>
-        </h1>
+    <aside className="w-64 bg-gray-900 border-r border-gray-800 text-white min-h-screen p-6 flex flex-col fixed left-0 top-0 z-40">
+      {/* Logo */}
+      <div className="flex items-center gap-3 mb-12">
+        <div className="w-10 h-10 bg-onerpm-orange rounded-xl flex items-center justify-center shrink-0 shadow-lg shadow-orange-500/30">
+          <Music className="w-5 h-5 text-white" />
+        </div>
+        <div>
+          <h1 className="text-base font-black tracking-tight leading-none text-white">ONErpm</h1>
+          <p className="text-xs font-medium text-gray-400 mt-0.5">Apple Intelligence</p>
+        </div>
       </div>
 
-      <nav className="flex-1 space-y-2">
-        {navItems.map((item) => (
+      {/* Analytics sections (visual only — all in one page via tabs) */}
+      <div className="mb-6">
+        <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest mb-3 px-2">Analytics</p>
+        <div className="space-y-1">
+          {[
+            { label: 'Overview & Time Series', icon: <BarChart3 className="w-4 h-4" /> },
+            { label: 'Songs & Albums',         icon: <Music className="w-4 h-4" /> },
+            { label: 'Demographics',           icon: <Users className="w-4 h-4" /> },
+            { label: 'Geography',              icon: <Globe2 className="w-4 h-4" /> },
+            { label: 'Listening Behavior',     icon: <Activity className="w-4 h-4" /> },
+            { label: 'Audience Affinity',      icon: <Shuffle className="w-4 h-4" /> },
+          ].map((item, i) => (
+            <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 text-sm cursor-default">
+              <span className="text-gray-600">{item.icon}</span>
+              <span>{item.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Data coverage */}
+      <div className="bg-white/5 rounded-2xl p-4 mb-6 border border-white/10">
+        <p className="text-xs font-bold text-gray-300 mb-3">Live Data Coverage</p>
+        <div className="space-y-2">
+          {[
+            '14 Apple API dimensions', 'iTunes metadata enrichment',
+            'Audience overlap analysis', 'Up to 365 days history',
+          ].map((item, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs text-gray-400">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+              {item}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Nav */}
+      <nav className="flex-1 space-y-1">
+        {navItems.map(item => (
           <Link
             key={item.href}
             href={item.href}
@@ -36,14 +76,14 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      <div className="mt-auto space-y-2 pt-8 border-t border-gray-800">
-        <Link href="/settings" className={`sidebar-item ${pathname === '/settings' ? 'active' : ''}`}>
+      <div className="mt-auto space-y-1 pt-6 border-t border-gray-800">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-gray-500">
+          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          Apple API Connected
+        </div>
+        <Link href="/" className="sidebar-item">
           <Settings className="w-5 h-5 shrink-0" />
           <span>Settings</span>
-        </Link>
-        <Link href="/help" className={`sidebar-item ${pathname === '/help' ? 'active' : ''}`}>
-          <HelpCircle className="w-5 h-5 shrink-0" />
-          <span>Help</span>
         </Link>
       </div>
     </aside>

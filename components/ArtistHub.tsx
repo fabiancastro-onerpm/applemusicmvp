@@ -2,7 +2,8 @@
 
 import { Play, Users, Radio, Music } from "lucide-react";
 
-export default function ArtistHub({ data }: { data: any }) {
+export default function ArtistHub({ data, hasData = true }: { data: any; hasData?: boolean }) {
+  const display = (val: any) => (hasData ? val : "—");
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 animate-in slide-in-from-bottom-4 duration-500">
       <div className="kpi-card relative overflow-hidden group">
@@ -13,7 +14,7 @@ export default function ArtistHub({ data }: { data: any }) {
           </div>
           <h3 className="text-gray-500 font-medium text-sm">Total Streams</h3>
         </div>
-        <p className="text-3xl font-black text-gray-900 tracking-tight">{data.totalStreams}</p>
+        <p className="text-3xl font-black text-gray-900 tracking-tight">{display(data.totalStreams)}</p>
         <div className="flex items-center gap-2 mt-2">
           <span className="text-emerald-500 font-bold text-sm bg-emerald-50 px-2 py-0.5 rounded-full">{data.streamsTrend}</span>
           <span className="text-gray-400 text-xs font-medium">vs last period</span>
@@ -28,7 +29,7 @@ export default function ArtistHub({ data }: { data: any }) {
           </div>
           <h3 className="text-gray-500 font-medium text-sm">Active Listeners</h3>
         </div>
-        <p className="text-3xl font-black text-gray-900 tracking-tight">{data.activeListeners}</p>
+        <p className="text-3xl font-black text-gray-900 tracking-tight">{display(data.activeListeners)}</p>
         <div className="flex items-center gap-2 mt-2">
           <span className="text-emerald-500 font-bold text-sm bg-emerald-50 px-2 py-0.5 rounded-full">{data.listenersTrend}</span>
           <span className="text-gray-400 text-xs font-medium">vs last period</span>
@@ -43,7 +44,7 @@ export default function ArtistHub({ data }: { data: any }) {
           </div>
           <h3 className="text-gray-500 font-medium text-sm">Shazams</h3>
         </div>
-        <p className="text-3xl font-black text-gray-900 tracking-tight">{data.shazams}</p>
+        <p className="text-3xl font-black text-gray-900 tracking-tight">{display(data.shazams)}</p>
         <div className="flex items-center gap-2 mt-2">
           <span className="text-emerald-500 font-bold text-sm bg-emerald-50 px-2 py-0.5 rounded-full">{data.shazamsTrend}</span>
           <span className="text-gray-400 text-xs font-medium">vs last period</span>
@@ -58,7 +59,7 @@ export default function ArtistHub({ data }: { data: any }) {
           </div>
           <h3 className="text-gray-500 font-medium text-sm">Radio Spins</h3>
         </div>
-        <p className="text-3xl font-black text-gray-900 tracking-tight">{data.radioSpins}</p>
+        <p className="text-3xl font-black text-gray-900 tracking-tight">{display(data.radioSpins)}</p>
         <div className="flex items-center gap-2 mt-2">
           <span className="text-red-500 font-bold text-sm bg-red-50 px-2 py-0.5 rounded-full">{data.radioTrend}</span>
           <span className="text-gray-400 text-xs font-medium">vs last period</span>

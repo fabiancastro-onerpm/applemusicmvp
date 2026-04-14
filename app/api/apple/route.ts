@@ -1,200 +1,359 @@
 import { NextResponse } from 'next/server';
 import { generateAppleDeveloperToken } from '@/lib/apple-auth';
-import { MOCK_KPI_DATA, MOCK_GEO_DATA, MOCK_GEO_CITIES, MOCK_DEMO_DATA, MOCK_OVERLAP_DATA, MOCK_RELEASE_DATA } from '@/lib/mock-data';
+import {
+  parseTSV, safeQuery, itunesLookup, itunesSearch,
+  buildAudience, buildHeaders, toInt, calcPct, fmtN,
+  queryAudienceEngagement
+} from '@/lib/apple-analytics';
 
-// Función para parsear TSV a Array de Objetos
-function parseTSV(tsvText: string) {
-  const lines = tsvText.trim().split('\n');
-  if (lines.length < 1 || lines[0] === "") return [];
-  const headers = lines[0].split('\t');
-  const result = [];
-  for (let i = 1; i < lines.length; i++) {
-    const row = lines[i].split('\t');
-    const obj: Record<string, string> = {};
-    headers.forEach((header, index) => {
-      obj[header.trim()] = row[index]?.trim() || "";
+// ─── POST /api/apple ──────────────────────────────────────────────────────────
+// Body: { artistId?: string, startDate: string, endDate: string }
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const { artistId, startDate, endDate } = body;
+
+    const token = generateAppleDeveloperToken();
+    if (!token) {
+      return NextResponse.json({ error: 'Failed to generate Apple Developer Token' }, { status: 500 });
+    }
+
+    const dateRange = {
+      start: startDate || new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0],
+      end: endDate || new Date().toISOString().split('T')[0],
+    };
+
+    const audience = buildAudience(artistId || null, dateRange);
+    const base = { audience };
+
+    // ── 12 parallel queries ──────────────────────────────────────────────────
+    const [
+      tsvTotal,        // group_by artist_id  → KPIs
+      tsvTimeSeries,   // group_by date        → time series
+      tsvStorefront,   // group_by storefront  → global distribution
+      tsvCities,       // group_by consumer_city
+      tsvAge,          // group_by age_bucket
+      tsvGender,       // group_by gender
+      tsvSongs,        // group_by song_id
+      tsvAlbums,       // group_by album_id
+      tsvSourceStream, // group_by source_of_stream
+      tsvDeviceOS,     // group_by device_os
+      tsvAudioFmt,     // group_by audio_format
+      tsvEndReason,    // group_by end_reason_type
+      tsvContainerType,// group_by container_type
+      tsvSubscription, // group_by subscription_type
+    ] = await Promise.all([
+      safeQuery(token, { ...base, group_by: ['artist_id'] }),
+      safeQuery(token, { ...base, group_by: ['date'] }),
+      safeQuery(token, { ...base, group_by: ['storefront'] }),
+      safeQuery(token, { ...base, group_by: ['consumer_city'] }),
+      safeQuery(token, { ...base, group_by: ['age_bucket'] }),
+      safeQuery(token, { ...base, group_by: ['gender'] }),
+      safeQuery(token, { ...base, group_by: ['song_id'] }),
+      safeQuery(token, { ...base, group_by: ['album_id'] }),
+      safeQuery(token, { ...base, group_by: ['source_of_stream'] }),
+      safeQuery(token, { ...base, group_by: ['device_os'] }),
+      safeQuery(token, { ...base, group_by: ['audio_format'] }),
+      safeQuery(token, { ...base, group_by: ['end_reason_type'] }),
+      safeQuery(token, { ...base, group_by: ['container_type'] }),
+      safeQuery(token, { ...base, group_by: ['subscription_type'] }),
+    ]);
+
+    // ── Parse all TSVs ───────────────────────────────────────────────────────
+    const rowTotal        = parseTSV(tsvTotal);
+    const rowTimeSeries   = parseTSV(tsvTimeSeries);
+    const rowStorefront   = parseTSV(tsvStorefront);
+    const rowCities       = parseTSV(tsvCities);
+    const rowAge          = parseTSV(tsvAge);
+    const rowGender       = parseTSV(tsvGender);
+    const rowSongs        = parseTSV(tsvSongs);
+    const rowAlbums       = parseTSV(tsvAlbums);
+    const rowSource       = parseTSV(tsvSourceStream);
+    const rowDeviceOS     = parseTSV(tsvDeviceOS);
+    const rowAudioFmt     = parseTSV(tsvAudioFmt);
+    const rowEndReason    = parseTSV(tsvEndReason);
+    const rowContainer    = parseTSV(tsvContainerType);
+    const rowSubscription = parseTSV(tsvSubscription);
+
+    // ── KPIs ────────────────────────────────────────────────────────────────
+    const g = rowTotal[0] || {};
+    const totalStreams   = toInt(g.play_count);
+    const totalListeners = toInt(g.listener_count);
+    const hasData = totalStreams > 0;
+
+    // ── iTunes lookups for songs & albums (parallel) ──────────────────────
+    const topSongRows  = rowSongs.sort((a, b) => toInt(b.play_count) - toInt(a.play_count)).slice(0, 20);
+    const topAlbumRows = rowAlbums.sort((a, b) => toInt(b.play_count) - toInt(a.play_count)).slice(0, 12);
+
+    const songIds  = topSongRows.map(r => r.song_id).filter(Boolean);
+    const albumIds = topAlbumRows.map(r => r.album_id).filter(Boolean);
+
+    // Artist name from iTunes
+    const itunesArtistSearch = artistId
+      ? fetch(`https://itunes.apple.com/lookup?id=${artistId}&entity=musicArtist`).then(r => r.ok ? r.json() : { results: [] }).catch(() => ({ results: [] }))
+      : Promise.resolve({ results: [] });
+
+    const [songMeta, albumMeta, itunesArtistRes] = await Promise.all([
+      itunesLookup(songIds, 'song'),
+      itunesLookup(albumIds, 'album'),
+      itunesArtistSearch,
+    ]);
+
+    const artistName = (itunesArtistRes.results?.[0]?.artistName) || 'Unknown Artist';
+    const artistArtwork = (itunesArtistRes.results?.[0]?.artworkUrl100 || '').replace('100x100', '600x600');
+
+    // ── Time Series ────────────────────────────────────────────────────────
+    const timeSeries = rowTimeSeries
+      .filter(r => r.date)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map(r => ({
+        date: r.date,
+        streams: toInt(r.play_count),
+        listeners: toInt(r.listener_count),
+      }));
+
+    // ── Global Distribution (Top 20) ────────────────────────────────────────
+    const geo = rowStorefront
+      .sort((a, b) => toInt(b.play_count) - toInt(a.play_count))
+      .slice(0, 20)
+      .map(r => ({
+        country: (r.storefront || 'XX').toUpperCase(),
+        streams: toInt(r.play_count),
+        listeners: toInt(r.listener_count),
+        pct: calcPct(toInt(r.play_count), totalStreams),
+      }))
+      .filter(r => r.country !== 'XX' && r.streams > 0);
+
+    // ── Top Cities ──────────────────────────────────────────────────────────
+    const cities = rowCities
+      .sort((a, b) => toInt(b.play_count) - toInt(a.play_count))
+      .slice(0, 10)
+      .map(r => {
+        const parts = (r.consumer_city_name || '').split(',');
+        return {
+          id: r.consumer_city,
+          city: (parts[0] || '').trim() || 'Unknown',
+          country: (parts[parts.length - 1] || '').trim() || '',
+          streams: toInt(r.play_count),
+          listeners: toInt(r.listener_count),
+          pct: calcPct(toInt(r.play_count), totalStreams),
+        };
+      })
+      .filter(r => r.city && r.city !== 'Unknown' && r.city !== 'null' && r.streams > 0);
+
+    // ── Age Segmentation ────────────────────────────────────────────────────
+    const ageTotalPlays = rowAge.reduce((s, r) => s + toInt(r.play_count), 0);
+    const age = rowAge
+      .map(r => {
+        const label = (r.age_bucket || 'Unknown')
+          .replace('AGE_', '').replace('_TO_', '-').replace('_MAX', '+');
+        return {
+          range: label === 'UNKNOWN' ? 'Unknown' : label,
+          streams: toInt(r.play_count),
+          listeners: toInt(r.listener_count),
+          pct: calcPct(toInt(r.play_count), ageTotalPlays),
+        };
+      })
+      .filter(r => r.range !== 'Unknown' && r.streams > 0)
+      .sort((a, b) => a.range.localeCompare(b.range));
+
+    // ── Gender Identity ─────────────────────────────────────────────────────
+    const genderTotalPlays = rowGender.reduce((s, r) => s + toInt(r.play_count), 0);
+    const genderMap: Record<string, string> = {
+      MALE: 'Male', FEMALE: 'Female', OTHER: 'Other/Non-binary', NOT_PROVIDED: 'Not Specified',
+    };
+    const gender = rowGender
+      .map(r => ({
+        type: genderMap[r.gender?.toUpperCase() || ''] || r.gender || 'Other',
+        streams: toInt(r.play_count),
+        listeners: toInt(r.listener_count),
+        pct: calcPct(toInt(r.play_count), genderTotalPlays),
+      }))
+      .filter(r => r.streams > 0)
+      .sort((a, b) => b.streams - a.streams);
+
+    // ── Top Songs ────────────────────────────────────────────────────────────
+    const songs = topSongRows.map((r, i) => {
+      const meta = songMeta[r.song_id] || {};
+      return {
+        rank: i + 1,
+        songId: r.song_id,
+        name: meta.trackName || r.song_name || `Song ${r.song_id}`,
+        artist: meta.artistName || artistName,
+        album: meta.collectionName || '',
+        artwork: (meta.artworkUrl100 || '').replace('100x100', '300x300'),
+        streams: toInt(r.play_count),
+        listeners: toInt(r.listener_count),
+        pct: calcPct(toInt(r.play_count), totalStreams),
+        previewUrl: meta.previewUrl || '',
+      };
+    }).filter(r => r.streams > 0);
+
+    // ── Top Albums ────────────────────────────────────────────────────────────
+    const albums = topAlbumRows.map((r, i) => {
+      const meta = albumMeta[r.album_id] || {};
+      return {
+        rank: i + 1,
+        albumId: r.album_id,
+        name: meta.collectionName || r.album_name || `Album ${r.album_id}`,
+        artist: meta.artistName || artistName,
+        artwork: (meta.artworkUrl100 || '').replace('100x100', '400x400'),
+        releaseDate: meta.releaseDate || '',
+        streams: toInt(r.play_count),
+        listeners: toInt(r.listener_count),
+        pct: calcPct(toInt(r.play_count), totalStreams),
+        genre: meta.primaryGenreName || '',
+        trackCount: meta.trackCount || 0,
+      };
+    }).filter(r => r.streams > 0);
+
+    // ── Source of Stream ───────────────────────────────────────────────────
+    const sourceTotal = rowSource.reduce((s, r) => s + toInt(r.play_count), 0);
+    const sourceLabelMap: Record<string, string> = {
+      LIBRARY: 'Library', SEARCH: 'Search', DISCOVERY: 'Discovery',
+      MUSIC_KIT: 'MusicKit', OTHER: 'Other'
+    };
+    const streamSources = rowSource
+      .map(r => ({
+        source: sourceLabelMap[r.source_of_stream?.toUpperCase() || ''] || r.source_of_stream || 'Other',
+        streams: toInt(r.play_count),
+        listeners: toInt(r.listener_count),
+        pct: calcPct(toInt(r.play_count), sourceTotal),
+      }))
+      .filter(r => r.streams > 0)
+      .sort((a, b) => b.streams - a.streams);
+
+    // ── Device OS ──────────────────────────────────────────────────────────
+    const deviceTotal = rowDeviceOS.reduce((s, r) => s + toInt(r.play_count), 0);
+    const deviceLabelMap: Record<string, string> = {
+      IOS: 'iOS', MAC: 'Mac', ANDROID: 'Android', WINDOWS: 'Windows',
+      TVOS: 'Apple TV', SONOS: 'Sonos', OTHER: 'Other'
+    };
+    const deviceOS = rowDeviceOS
+      .map(r => ({
+        os: deviceLabelMap[r.device_os?.toUpperCase() || ''] || r.device_os || 'Other',
+        streams: toInt(r.play_count),
+        listeners: toInt(r.listener_count),
+        pct: calcPct(toInt(r.play_count), deviceTotal),
+      }))
+      .filter(r => r.streams > 0)
+      .sort((a, b) => b.streams - a.streams);
+
+    // ── Audio Format ────────────────────────────────────────────────────────
+    const audioTotal = rowAudioFmt.reduce((s, r) => s + toInt(r.play_count), 0);
+    const audioLabelMap: Record<string, string> = {
+      LOSSY: 'Standard (AAC)', LOSSLESS: 'Lossless (ALAC)', IMMERSIVE: 'Spatial Audio (Dolby)'
+    };
+    const audioFormat = rowAudioFmt
+      .map(r => ({
+        format: audioLabelMap[r.audio_format?.toUpperCase() || ''] || r.audio_format || 'Unknown',
+        streams: toInt(r.play_count),
+        pct: calcPct(toInt(r.play_count), audioTotal),
+      }))
+      .filter(r => r.streams > 0)
+      .sort((a, b) => b.streams - a.streams);
+
+    // ── End Reason (Completion / Skip) ─────────────────────────────────────
+    const endTotal = rowEndReason.reduce((s, r) => s + toInt(r.play_count), 0);
+    const endLabelMap: Record<string, string> = {
+      COMPLETE: 'Completed', SKIP: 'Skipped', MANUALLY: 'Manually Stopped',
+      PAUSED: 'Paused', OTHER: 'Other'
+    };
+    const endReasons = rowEndReason
+      .map(r => ({
+        reason: endLabelMap[r.end_reason_type?.toUpperCase() || ''] || r.end_reason_type || 'Other',
+        streams: toInt(r.play_count),
+        pct: calcPct(toInt(r.play_count), endTotal),
+      }))
+      .filter(r => r.streams > 0)
+      .sort((a, b) => b.streams - a.streams);
+
+    // Completion rate KPI
+    const completedRow = rowEndReason.find(r => r.end_reason_type?.toUpperCase() === 'COMPLETE');
+    const completionRate = endTotal > 0 ? calcPct(toInt(completedRow?.play_count), endTotal) : null;
+    const skipRate = endTotal > 0 ? calcPct(toInt(rowEndReason.find(r => r.end_reason_type?.toUpperCase() === 'SKIP')?.play_count), endTotal) : null;
+
+    // ── Container Type (Where it's played: Playlist vs Album vs Radio) ─────
+    const containerTotal = rowContainer.reduce((s, r) => s + toInt(r.play_count), 0);
+    const containerLabelMap: Record<string, string> = {
+      SINGLE_TRACK: 'Single Track', RADIO_STATION: 'Radio Station',
+      PLAYLIST: 'Playlist', ALBUM: 'Album'
+    };
+    const containerTypes = rowContainer
+      .map(r => ({
+        type: containerLabelMap[r.container_type?.toUpperCase() || ''] || r.container_type || 'Other',
+        streams: toInt(r.play_count),
+        pct: calcPct(toInt(r.play_count), containerTotal),
+      }))
+      .filter(r => r.streams > 0)
+      .sort((a, b) => b.streams - a.streams);
+
+    // ── Subscription Type ───────────────────────────────────────────────────
+    const subTotal = rowSubscription.reduce((s, r) => s + toInt(r.play_count), 0);
+    const subscriptions = rowSubscription
+      .map(r => ({
+        type: (r.subscription_type || 'Unknown').replace(/_/g, ' ').toLowerCase()
+          .replace(/\b\w/g, (c: string) => c.toUpperCase()),
+        streams: toInt(r.play_count),
+        pct: calcPct(toInt(r.play_count), subTotal),
+      }))
+      .filter(r => r.streams > 0)
+      .sort((a, b) => b.streams - a.streams);
+
+    // ── Response ────────────────────────────────────────────────────────────
+    return NextResponse.json({
+      success: true,
+      hasData,
+      artistId,
+      artistName,
+      artistArtwork,
+      dateRange,
+      noDataReason: !hasData
+        ? `No streams found for ${artistId ? `Artist ID "${artistId}"` : 'this catalog'}. Verify the Apple Artist ID or try a wider date range.`
+        : null,
+      kpis: {
+        totalStreams: fmtN(totalStreams),
+        totalListeners: fmtN(totalListeners),
+        completionRate: completionRate !== null ? `${completionRate}%` : null,
+        skipRate: skipRate !== null ? `${skipRate}%` : null,
+        rawStreams: totalStreams,
+        rawListeners: totalListeners,
+      },
+      timeSeries,
+      geo,
+      cities,
+      age,
+      gender,
+      songs,
+      albums,
+      streamSources,
+      deviceOS,
+      audioFormat,
+      endReasons,
+      containerTypes,
+      subscriptions,
     });
-    result.push(obj);
+
+  } catch (err: any) {
+    console.error('Apple API Error:', err);
+    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 });
   }
-  return result;
 }
 
+// Keep GET for backward compat
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const artistId = searchParams.get('artistId');
   const timeFilter = searchParams.get('timeFilter') || '28days';
+  if (!artistId) return NextResponse.json({ error: 'Missing artistId' }, { status: 400 });
 
-  if (!artistId) {
-    return NextResponse.json({ error: 'Falta el parámetro artistId' }, { status: 400 });
-  }
+  const days = timeFilter === '7days' ? 7 : timeFilter === '90days' ? 90 : timeFilter === 'allTime' ? 365 : 28;
+  const endDate = new Date().toISOString().split('T')[0];
+  const startDate = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
 
-  const developerToken = generateAppleDeveloperToken();
-  if (!developerToken) {
-    return NextResponse.json({ error: 'Fallo al generar el Apple Analytics Token.' }, { status: 500 });
-  }
-
-  try {
-    let days = 28;
-    if (timeFilter === '7days') days = 7;
-    if (timeFilter === '90days') days = 90;
-    if (timeFilter === 'allTime') days = 365;
-
-    // Calculamos el rango de fechas
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(endDate.getDate() - days);
-    const dateRange = {
-      start: startDate.toISOString().split('T')[0],
-      end: endDate.toISOString().split('T')[0]
-    };
-
-    const commonPayload = {
-      audience: {
-        ids: { entity: "artist_id", values: [parseInt(artistId)] },
-        played_in_range: dateRange
-      }
-    };
-
-    const endpoint = `https://musicanalytics.apple.com/v4/queries/audience-engagement`;
-
-    // Solicitud 1: Totales Globales
-    const totalReq = fetch(endpoint, {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${developerToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ ...commonPayload, group_by: ["artist_id"] })
-    });
-
-    // Solicitud 2: Por Ciudades
-    const citiesReq = fetch(endpoint, {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${developerToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ ...commonPayload, group_by: ["consumer_city"] })
-    });
-
-    // Solicitud 3: Por Edad
-    const ageReq = fetch(endpoint, {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${developerToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ ...commonPayload, group_by: ["age_bucket"] })
-    });
-
-    // Solicitud 4: Por Países (Storefront) para Global Distribution
-    const storeReq = fetch(endpoint, {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${developerToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ ...commonPayload, group_by: ["storefront"] })
-    });
-
-    // Solicitud 5: Búsqueda inversa en iTunes Público para el nombre del Artista
-    const itunesReq = fetch(`https://itunes.apple.com/lookup?id=${artistId}`);
-
-    // Resolvemos promesas en paralelo
-    const [totRes, citRes, ageRes, storeRes, itunesRes] = await Promise.all([totalReq, citiesReq, ageReq, storeReq, itunesReq]);
-
-    if (!totRes.ok) {
-       const err = await totRes.text();
-       return NextResponse.json({ error: `Apple API Error ${totRes.status}`, details: err }, { status: totRes.status });
-    }
-
-    const tsvTotal = await totRes.text();
-    const tsvCities = await citRes.ok ? await citRes.text() : "";
-    const tsvAges = await ageRes.ok ? await ageRes.text() : "";
-    const tsvStore = await storeRes.ok ? await storeRes.text() : "";
-    
-    let artistName = "Unknown Artist";
-    if (itunesRes.ok) {
-       try {
-           const itunesData = await itunesRes.json();
-           if (itunesData.results && itunesData.results.length > 0) {
-               artistName = itunesData.results[0].artistName;
-           }
-       } catch(e) {}
-    }
-
-    const parsedTotal = parseTSV(tsvTotal);
-    const parsedCities = parseTSV(tsvCities);
-    const parsedAges = parseTSV(tsvAges);
-    const parsedStore = parseTSV(tsvStore);
-
-    // Mapeamos KPIs de Apple
-    const globalStats = parsedTotal[0] || {};
-    const totalStreams = globalStats.play_count ? parseInt(globalStats.play_count).toLocaleString() : "0";
-    const totalListeners = globalStats.listener_count ? parseInt(globalStats.listener_count).toLocaleString() : "0";
-
-    // Mapeamos Países al formato Frontend (Geo)
-    const sortedGeo = parsedStore
-        .sort((a, b) => parseInt(b.play_count || "0") - parseInt(a.play_count || "0"))
-        .slice(0, 10) 
-        .map(store => ({
-            country: (store.storefront || "XX").toUpperCase(),
-            value: parseInt(store.play_count || "0")
-        })).filter(g => g.country !== "XX");
-
-    // Mapeamos Ciudades al formato Frontend
-    const sortedCities = parsedCities
-        .sort((a, b) => parseInt(b.play_count || "0") - parseInt(a.play_count || "0"))
-        .slice(0, 5)
-        .map(cityData => {
-           const parts = cityData.consumer_city_name ? cityData.consumer_city_name.split(',') : [];
-           const cityName = parts.length > 0 ? parts[0].trim() : "Unknown City";
-           const countryName = parts.length > 1 ? parts[parts.length - 1].trim() : "XX";
-           return {
-             id: cityData.consumer_city,
-             city: cityName, 
-             country: countryName,
-             streams: parseInt(cityData.play_count || "0"),
-             percentage: 0 
-           };
-        });
-
-    // Mapeamos Edades al formato Frontend
-    const demoFormatObj: Record<string, number> = {};
-    let totalAgePlays = 0;
-    parsedAges.forEach(age => {
-        let label = age.age_bucket?.replace("AGE_", "").replace("_TO_", "-").replace("_MAX", "+") || "Unknown";
-        if(label.toUpperCase() === "UNKNOWN") return; 
-        const val = parseInt(age.play_count || "0");
-        demoFormatObj[label] = (demoFormatObj[label] || 0) + val;
-        totalAgePlays += val;
-    });
-
-    const demoAges = Object.entries(demoFormatObj).map(([range, val]) => {
-        const perc = totalAgePlays > 0 ? Math.round((val / totalAgePlays) * 100) : val;
-        return { range, value: perc };
-    });
-    // Ordenamos las edades lógicamente
-    demoAges.sort((a, b) => a.range.localeCompare(b.range));
-
-    const demoPayload = {
-        age: demoAges,
-        gender: [
-            { type: 'Female', value: 48 },
-            { type: 'Male', value: 45 },
-            { type: 'Non-binary', value: 7 }
-        ]
-    };
-
-    return NextResponse.json({
-      success: true,
-      artistId: artistId,
-      artistName: artistName,
-      source: "Apple Music Analytics API (Live)",
-      data: {
-         kpis: { ...MOCK_KPI_DATA, totalStreams, activeListeners: totalListeners },
-         geo: sortedGeo.length > 0 ? sortedGeo : MOCK_GEO_DATA,
-         cities: sortedCities.length > 0 ? sortedCities : MOCK_GEO_CITIES,
-         demo: demoAges.length > 0 ? demoPayload : MOCK_DEMO_DATA,
-         overlap: MOCK_OVERLAP_DATA,
-         releases: MOCK_RELEASE_DATA, 
-         raw: { tsvTotal, tsvCities, tsvAges, tsvStore } 
-      }
-    });
-
-  } catch (error) {
-    console.error("API Fetch Error:", error);
-    return NextResponse.json({ error: 'Hubo un error de Red interno comunicándose con Apple' }, { status: 500 });
-  }
+  return POST(new Request(request.url, {
+    method: 'POST',
+    body: JSON.stringify({ artistId, startDate, endDate }),
+    headers: { 'Content-Type': 'application/json' },
+  }));
 }
-
-
-
