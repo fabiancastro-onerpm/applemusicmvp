@@ -4,7 +4,7 @@ export async function POST(request: Request) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
-      { insights: '⚠️ No se encontró la API key de Gemini. Localmente o en Vercel, por favor configura GEMINI_API_KEY en las variables de entorno.\n\n*Ejemplo de recomendación simulada*:\nDado el alto nivel de listeners compartidos, sugerimos contactar al equipo del artista para una colaboración en redes sociales o considerar una gira en conjunto.' }
+      { insights: '⚠️ Gemini API key not found. Locally or on Vercel, please set GEMINI_API_KEY in the environment variables.\n\n*Simulated Recommendation Example*:\nGiven the high level of shared listeners, we suggest contacting the artist\'s team for a social media collaboration or considering a joint tour.' }
     );
   }
 
@@ -20,31 +20,31 @@ export async function POST(request: Request) {
       secondaryListeners,
     } = body;
 
-    const prompt = `Eres un analista de datos de la industria musical que trabaja para el equipo de A&R y Project Management de ONErpm, un distribuidor musical.
+    const prompt = `You are a music industry data analyst working for the A&R and Project Management team at ONErpm, a music distributor.
 
-Analiza los siguientes datos de afinidad de audiencia entre dos artistas en Apple Music y proporciona recomendaciones accionables específicas para un Project Manager.
+Analyze the following audience affinity data between two artists on Apple Music and provide specific, actionable recommendations for a Project Manager.
 
-## Datos del Análisis:
-- **Artista Principal**: ${primaryArtistName}
-- **Artista Comparado**: ${secondaryArtistName}
-- **Listeners de ${primaryArtistName}**: ${primaryListeners}
-- **Listeners de ${secondaryArtistName}**: ${secondaryListeners}
-- **Listeners compartidos**: ${sharedListeners}
-- **Overlap (${primaryArtistName} → ${secondaryArtistName})**: ${overlapPct}% de los listeners de ${primaryArtistName} también escuchan a ${secondaryArtistName}
-- **Overlap inverso (${secondaryArtistName} → ${primaryArtistName})**: ${reverseOverlapPct}% de los listeners de ${secondaryArtistName} también escuchan a ${primaryArtistName}
+## Analysis Data:
+- **Primary Artist**: ${primaryArtistName}
+- **Comparison Artist**: ${secondaryArtistName}
+- **${primaryArtistName} Listeners**: ${primaryListeners}
+- **${secondaryArtistName} Listeners**: ${secondaryListeners}
+- **Shared Listeners**: ${sharedListeners}
+- **Overlap (${primaryArtistName} → ${secondaryArtistName})**: ${overlapPct}% of ${primaryArtistName}'s listeners also listen to ${secondaryArtistName}
+- **Reverse Overlap (${secondaryArtistName} → ${primaryArtistName})**: ${reverseOverlapPct}% of ${secondaryArtistName}'s listeners also listen to ${primaryArtistName}
 
-## Instrucciones:
-Responde en español con formato estructurado. Sé específico y práctico. Incluye:
+## Instructions:
+Respond in English with a structured format. Be specific and practical. Include:
 
-1. **📊 Resumen Ejecutivo** (2-3 líneas máximo)
-2. **🎯 Acciones Inmediatas** (3-4 acciones concretas que el PM puede ejecutar esta semana)
-3. **🤝 Oportunidades de Colaboración** (basado en el nivel de afinidad)
-4. **📈 Estrategia de Playlist** (cómo aprovechar el overlap en playlists de Apple Music)
-5. **⚠️ Consideraciones** (riesgos o factores a tener en cuenta)
+1. **📊 Executive Summary** (2-3 lines max)
+2. **🎯 Immediate Actions** (3-4 concrete actions the PM can execute this week)
+3. **🤝 Collaboration Opportunities** (based on affinity level)
+4. **📈 Playlist Strategy** (how to leverage overlap in Apple Music playlists)
+5. **⚠️ Considerations** (risks or factors to keep in mind)
 
-Mantén cada sección breve y al grano. No uses más de 400 palabras en total.`;
+Keep each section brief and to the point. Do not exceed 400 words total.`;
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
     const geminiRes = await fetch(geminiUrl, {
       method: 'POST',
@@ -70,7 +70,7 @@ Mantén cada sección breve y al grano. No uses más de 400 palabras en total.`;
     const geminiJson = await geminiRes.json();
     const text =
       geminiJson.candidates?.[0]?.content?.parts?.[0]?.text ||
-      'No se pudo generar el análisis.';
+      'Could not generate analysis.';
 
     return NextResponse.json({ insights: text });
   } catch (err: any) {
