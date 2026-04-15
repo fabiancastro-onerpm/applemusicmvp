@@ -46,4 +46,4 @@ A high-intelligence dashboard designed for professional music executives. This M
 - **AI Collaboration Scouting**: Leverage LLMs to find the perfect collaboration match based on fan behavior.
 
 ---
-*Developed for ONErpm A&R and Project Management teams.*
+*Developed by Fabian Castro for ONErpm teams.*
