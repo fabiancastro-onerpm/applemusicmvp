@@ -1,6 +1,6 @@
 # ONErpm Apple Music Analytics MVP 🍎🚀
 
-A high-intelligence A&R dashboard designed for professional music executives. This MVP transforms raw Apple Music Analytics data into actionable intelligence, featuring deep playlist tracking and AI-driven artist insights.
+A high-intelligence dashboard designed for professional music executives. This MVP transforms raw Apple Music Analytics data into actionable intelligence, featuring deep playlist tracking and AI-driven artist insights.
 
 ## ✨ Key Features
 
