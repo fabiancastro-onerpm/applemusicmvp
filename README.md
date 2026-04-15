@@ -1,37 +1,37 @@
 # Apple Music Intelligence Hub (MVP)
 
-Herramienta profesional de análisis de datos para artistas y tracks con alta granularidad, diseñada específicamente para múltiples stakeholders dentro de la industria musical (A&R, Project Managers, Marketing y Data Analysts).
+A professional, high-granularity data analytics tool for artists and tracks, specifically designed for music industry stakeholders, including A&R, Project Managers, Marketing, and Data Analysts.
 
-Este MVP permite una visualización profunda de métricas en tiempo real directamente desde la API de Apple Music Analytics, facilitando la toma de decisiones estratégicas basadas en el comportamiento real de la audiencia.
+This MVP provides deep real-time metrics directly from the Apple Music Analytics API, enabling strategic decision-making based on actual audience behavior.
 
-## 🚀 Beneficios Clave
+## 🚀 Key Benefits
 
-- **Granularidad Extrema**: Visualización de streams por ciudad, dispositivo, formato de audio y tipo de suscripción.
-- **Audience Affinity (Overlap)**: Identificación de solapamiento de audiencia entre artistas para detectar oportunidades de colaboración.
-- **A&R Insights con IA**: Generación de recomendaciones accionables utilizando Gemini AI (Flash 2.5) para interpretar los datos de afinidad.
-- **Playlist Journey**: Seguimiento detallado del impacto de las playlists en el consumo del artista con sistema de recuperación profunda de metadatos.
-- **Interfaz Premium**: Dashboard centralizado con navegación intuitiva y visualizaciones dinámicas.
+- **Extreme Granularity**: Visualize streams by city, device, audio format, and subscription type.
+- **Audience Affinity (Overlap)**: Identify audience overlap between artists to detect collaboration opportunities.
+- **AI-Powered A&R Insights**: Generate actionable recommendations using Gemini AI (1.5 Flash) to interpret affinity data.
+- **Playlist Journey**: Detailed tracking of playlist impact on artist consumption with a deep metadata recovery engine.
+- **Premium Interface**: Centralized dashboard with intuitive navigation and dynamic visualizations.
 
-## 🛠 Configuración Técnica
+## 🛠 Technical Configuration
 
-Para ejecutar este proyecto localmente, asegúrate de configurar las siguientes variables de entorno en un archivo `.env.local`:
+To run this project locally, ensure you set the following environment variables in a `.env.local` file:
 
 ```env
 # Apple Music API Credentials
-APPLE_KEY_ID=tu_key_id
-APPLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\ntu_llave_privada\n-----END PRIVATE KEY-----"
-APPLE_UUID=tu_issuer_id
-APPLE_CONTENT_PROVIDER_ID=tu_provider_id
+APPLE_KEY_ID=your_key_id
+APPLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nyour_private_key\n-----END PRIVATE KEY-----"
+APPLE_UUID=your_issuer_id
+APPLE_CONTENT_PROVIDER_ID=your_provider_id
 
 # Gemini AI (For A&R Insights)
-GEMINI_API_KEY=tu_gemini_api_key
+GEMINI_API_KEY=your_gemini_api_key
 ```
 
-## 📦 Instalación y Uso
+## 📦 Installation and Usage
 
-1. Instalar dependencias: `npm install`
-2. Iniciar servidor de desarrollo: `npm run dev`
-3. Abrir en el navegador: `http://localhost:3000`
+1. Install dependencies: `npm install`
+2. Start the development server: `npm run dev`
+3. Open in your browser: `http://localhost:3000`
 
 ---
-*Desarrollado para ONErpm por el equipo de Advanced Analytics.*
+*Developed for ONErpm by the Advanced Analytics team.*
