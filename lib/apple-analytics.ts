@@ -34,6 +34,7 @@ export async function queryAudienceEngagement(
     method: 'POST',
     headers: buildHeaders(token),
     body: JSON.stringify(payload),
+    cache: 'no-store'
   });
   if (!res.ok) {
     const err = await res.text();
@@ -150,7 +151,8 @@ export function buildAudience(
     played_in_range: { ...dateRange, time_zone: 'UTC' },
   };
   if (artistId) {
-    aud.ids = { entity: 'artist_id', values: [parseInt(artistId)] };
+    // For Analytics API v4, filter_by is more universal and robust
+    aud.filter_by = { artist_id: [artistId] };
   }
   return aud;
 }
