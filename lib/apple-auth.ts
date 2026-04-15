@@ -23,11 +23,12 @@ export function generateAppleDeveloperToken() {
       typ: 'JWT'
     };
 
+    const iat = Math.floor(Date.now() / 1000) - 60; // 1 min buffer for clock drift
     const payload = {
       iss: APPLE_ISSUER_ID,
       aud: 'appstoreconnect-v1',
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + (15 * 60), // App Store Connect MAX is 20 minutes!
+      iat: iat,
+      exp: iat + (15 * 60) + 60, // Total 15 mins + buffer
     };
 
     const token = jwt.sign(payload, APPLE_PRIVATE_KEY, {
