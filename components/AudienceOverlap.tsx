@@ -279,12 +279,12 @@ export default function AudienceOverlapCard({
       });
       const json = await res.json();
       if (!res.ok) {
-        setAiError(json.error || 'Error al consultar Gemini');
+        setAiError(json.error || 'Error querying Gemini');
       } else {
         setAiInsights(json.insights);
       }
     } catch (e: any) {
-      setAiError(e.message || 'Error de red');
+      setAiError(e.message || 'Network error');
     } finally {
       setAiLoading(false);
     }
@@ -425,7 +425,7 @@ export default function AudienceOverlapCard({
               ) : (
                 <Sparkles className="w-5 h-5 group-hover:animate-pulse" />
               )}
-              {aiLoading ? 'Analizando con Gemini AI...' : '✨ ¿Qué puedo hacer con esto?'}
+              {aiLoading ? 'Analyzing with Gemini AI...' : '✨ What can I do with that?'}
               <span className="ml-auto text-xs opacity-70 bg-white/20 px-2 py-0.5 rounded-full">Powered by Gemini</span>
             </button>
 
@@ -434,8 +434,8 @@ export default function AudienceOverlapCard({
                 <div className="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-violet-100/80 to-indigo-100/80 border-b border-purple-200">
                   <div className="flex items-center gap-2">
                     <Bot className="w-5 h-5 text-purple-600" />
-                    <span className="font-bold text-sm text-purple-900">Análisis de Gemini AI</span>
-                    <span className="text-xs bg-purple-200/60 text-purple-700 px-2 py-0.5 rounded-full font-medium">Gemini 2.5 Flash</span>
+                    <span className="font-bold text-sm text-purple-900">Gemini AI Analysis</span>
+                    <span className="text-xs bg-purple-200/60 text-purple-700 px-2 py-0.5 rounded-full font-medium">Gemini 1.5 Flash</span>
                   </div>
                   <button
                     onClick={() => setShowAiPanel(false)}
@@ -454,8 +454,8 @@ export default function AudienceOverlapCard({
                         </div>
                         <div className="absolute -inset-2 rounded-full border-2 border-purple-200 animate-ping opacity-30" />
                       </div>
-                      <p className="text-sm text-purple-600 font-medium">Gemini está analizando los datos...</p>
-                      <p className="text-xs text-purple-400">Generando recomendaciones accionables</p>
+                      <p className="text-sm text-purple-600 font-medium">Gemini is analyzing the data...</p>
+                      <p className="text-xs text-purple-400">Generating actionable recommendations</p>
                     </div>
                   )}
 
