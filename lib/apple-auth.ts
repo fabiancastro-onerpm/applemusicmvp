@@ -1,59 +1,44 @@
-import jwt from 'jsonwebtoken';
+import * as jose from 'jose';
 
 /**
  * Generates an Apple App Store Connect Token (JWT) for Music Analytics API.
- * This should ONLY be run on the server.
+ * Uses 'jose' for better compatibility with Vercel/Next.js Serverless environments.
  */
-export function generateAppleDeveloperToken() {
+export async function generateAppleDeveloperToken() {
   const APPLE_KEY_ID = process.env.APPLE_KEY_ID?.trim();
   const APPLE_ISSUER_ID = process.env.APPLE_UUID?.trim(); 
   let APPLE_PRIVATE_KEY = process.env.APPLE_PRIVATE_KEY?.trim();
 
   if (!APPLE_KEY_ID || !APPLE_ISSUER_ID || !APPLE_PRIVATE_KEY) {
-    console.error("Missing Apple Analytics API environment variables. (Details: ID="+(!!APPLE_KEY_ID)+", ISS="+(!!APPLE_ISSUER_ID)+", KEY="+(!!APPLE_PRIVATE_KEY)+")");
+    console.error("Missing Apple Analytics API credentials.");
     return null;
   }
 
-  // Aggressive Sanitization for Vercel Environment Variables
-  if (APPLE_PRIVATE_KEY.startsWith('"') && APPLE_PRIVATE_KEY.endsWith('"')) {
-    APPLE_PRIVATE_KEY = APPLE_PRIVATE_KEY.slice(1, -1);
-  }
-  if (APPLE_PRIVATE_KEY.startsWith("'") && APPLE_PRIVATE_KEY.endsWith("'")) {
-    APPLE_PRIVATE_KEY = APPLE_PRIVATE_KEY.slice(1, -1);
-  }
+  // Sanitization
+  if (APPLE_PRIVATE_KEY.startsWith('"') && APPLE_PRIVATE_KEY.endsWith('"')) APPLE_PRIVATE_KEY = APPLE_PRIVATE_KEY.slice(1, -1);
+  if (APPLE_PRIVATE_KEY.startsWith("'") && APPLE_PRIVATE_KEY.endsWith("'")) APPLE_PRIVATE_KEY = APPLE_PRIVATE_KEY.slice(1, -1);
   
-  // Replace escaped newlines with real newlines
   APPLE_PRIVATE_KEY = APPLE_PRIVATE_KEY.replace(/\\n/g, '\n');
 
-  // Verify it looks like a PEM key
-  if (!APPLE_PRIVATE_KEY.includes('BEGIN PRIVATE KEY')) {
-    console.error("Apple Private Key format error: Missing BEGIN PRIVATE KEY header.");
-    return null;
-  }
-
   try {
-    const header = {
-      alg: 'ES256',
-      kid: APPLE_KEY_ID,
-      typ: 'JWT'
-    };
+    // Import the PKCS8 key using native jose logic
+    const ecPrivateKey = await jose.importPKCS8(APPLE_PRIVATE_KEY, 'ES256');
 
-    const iat = Math.floor(Date.now() / 1000) - 60; // 1 min buffer for clock drift
-    const payload = {
-      iss: APPLE_ISSUER_ID,
-      aud: 'mr-v1', // Analytics API often requires mr-v1 instead of appstoreconnect-v1
-      iat: iat,
-      exp: iat + (15 * 60) + 60, // Total 15 mins + buffer
-    };
-
-    const token = jwt.sign(payload, APPLE_PRIVATE_KEY, {
-      algorithm: 'ES256',
-      header: header,
-    });
+    const token = await new jose.SignJWT({})
+      .setProtectedHeader({
+        alg: 'ES256',
+        kid: APPLE_KEY_ID,
+        typ: 'JWT'
+      })
+      .setIssuer(APPLE_ISSUER_ID)
+      .setAudience('mr-v1')
+      .setIssuedAt(Math.floor(Date.now() / 1000) - 60)
+      .setExpirationTime('15m')
+      .sign(ecPrivateKey);
 
     return token;
-  } catch (error) {
-    console.error("Error generating Apple Analytics Token:", error);
+  } catch (error: any) {
+    console.error("JOSE Token Generation Error:", error.message);
     return null;
   }
 }

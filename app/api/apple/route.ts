@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { artistId, startDate, endDate } = body;
 
-    const token = generateAppleDeveloperToken();
+    const token = await generateAppleDeveloperToken();
     if (!token) {
       return NextResponse.json({ error: 'Failed to generate Apple Developer Token' }, { status: 500 });
     }
