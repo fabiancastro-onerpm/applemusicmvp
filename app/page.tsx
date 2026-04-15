@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Play, Users, Zap, AlertTriangle, Search, Loader2,
   Calendar, X, CheckCircle2, SkipForward,
@@ -17,6 +17,7 @@ import {
   StreamSourcesCard, DeviceOSCard, AudioFormatCard,
   CompletionCard, ContainerTypeCard, SubscriptionCard
 } from "@/components/BehaviorMetrics";
+import PlaylistJourney from "@/components/PlaylistJourney";
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 interface DashboardData {
@@ -39,6 +40,7 @@ interface DashboardData {
   endReasons: any[];
   containerTypes: any[];
   subscriptions: any[];
+  playlists: any[];
 }
 
 const EMPTY_DATA: DashboardData = {
@@ -49,6 +51,7 @@ const EMPTY_DATA: DashboardData = {
   timeSeries: [], geo: [], cities: [], age: [], gender: [],
   songs: [], albums: [], streamSources: [], deviceOS: [],
   audioFormat: [], endReasons: [], containerTypes: [], subscriptions: [],
+  playlists: [],
 };
 
 // ─── DATE PRESETS ─────────────────────────────────────────────────────────────
@@ -239,7 +242,8 @@ const TABS = [
   { id: 'demographics', label: 'Demographics',       icon: Users },
   { id: 'geography',    label: 'Geography',          icon: Globe2 },
   { id: 'behavior',     label: 'Listening Behavior', icon: Activity },
-  { id: 'affinity',     label: 'Audience Affinity',  icon: Shuffle },
+  { id: 'playlist',     label: 'Playlist Journey',   icon: Shuffle },
+  { id: 'affinity',     label: 'Audience Affinity',  icon: Zap },
 ];
 
 // ─── KPI CARD ─────────────────────────────────────────────────────────────────
@@ -274,6 +278,19 @@ export default function Home() {
 
   const { startDate, endDate } = getDateRange(selectedPreset);
 
+  useEffect(() => {
+    const handleRemoteNav = (e: any) => {
+      setActiveTab(e.detail);
+      window.dispatchEvent(new CustomEvent('syncTab', { detail: e.detail }));
+    };
+    window.addEventListener('changeTab', handleRemoteNav);
+    return () => window.removeEventListener('changeTab', handleRemoteNav);
+  }, []);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('syncTab', { detail: activeTab }));
+  }, [activeTab]);
+
   const fetchData = async (artistId?: string, startDate?: string, endDate?: string) => {
     setLoading(true);
     setNoDataReason(null);
@@ -307,6 +324,7 @@ export default function Home() {
           endReasons: json.endReasons || [],
           containerTypes: json.containerTypes || [],
           subscriptions: json.subscriptions || [],
+          playlists: json.playlists || [],
         });
         setHasData(json.hasData);
         // Update artist name from Apple (may differ from iTunes)
@@ -452,32 +470,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ── Tabs ────────────────────────────────────────────────────────────── */}
-      {hasData && (
-        <div className="border-b border-gray-200">
-          <div className="flex gap-1 overflow-x-auto pb-px">
-            {TABS.map(tab => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-3 text-sm font-bold whitespace-nowrap border-b-2 transition-all ${
-                    activeTab === tab.id
-                      ? 'text-onerpm-orange border-onerpm-orange'
-                      : 'text-gray-500 border-transparent hover:text-gray-900 hover:border-gray-300'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ── Empty state ──────────────────────────────────────────────────────── */}
+      {/* ── Content ───────────────────────────────────────────────────────────── */}
       {!hasData && !loading && !noDataReason && (
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <div className="w-20 h-20 rounded-3xl bg-orange-50 flex items-center justify-center mb-6">
@@ -539,6 +532,12 @@ export default function Home() {
             <AudioFormatCard data={data.audioFormat} />
             <CompletionCard data={data.endReasons} />
           </div>
+        </div>
+      )}
+
+      {hasData && activeTab === 'playlist' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          <PlaylistJourney data={data.playlists} />
         </div>
       )}
 

@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 50" fill="none">
-  <text x="0" y="38" font-family="Inter, system-ui, sans-serif" font-size="38" font-weight="900" fill="white">
-    <tspan fill="white">ONE</tspan><tspan fill="#f04f23">rpm</tspan>
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="32" viewBox="0 0 120 32">
+  <text x="0" y="26" font-family="Inter, system-ui, sans-serif" font-size="28" font-weight="900" letter-spacing="-1">
+    <tspan fill="#ffffff">ONE</tspan><tspan fill="#f04f23">rpm</tspan>
   </text>
 </svg>

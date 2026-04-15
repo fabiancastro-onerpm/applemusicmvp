@@ -86,7 +86,14 @@ export async function itunesLookup(ids: (string | number)[], entity: 'song' | 'a
           const json = await res.json();
           (json.results || []).forEach((item: any) => {
             const id = String(item.trackId || item.collectionId || item.artistId || '');
-            if (id) results[id] = item;
+            if (id) {
+              if (!results[id]) results[id] = item;
+              else if (!results[id].previewUrl && item.previewUrl) results[id].previewUrl = item.previewUrl;
+            }
+            if (item.wrapperType === 'track' && item.collectionId && item.previewUrl) {
+              const cId = String(item.collectionId);
+              if (results[cId] && !results[cId].previewUrl) results[cId].previewUrl = item.previewUrl;
+            }
           });
         } catch {}
       })

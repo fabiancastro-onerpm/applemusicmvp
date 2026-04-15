@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef } from 'react';
-import { Users, Zap, Search, Loader2, X, Music, Info, TrendingUp, ArrowRight } from 'lucide-react';
+import { Users, Zap, Search, Loader2, X, Music, Info, TrendingUp, ArrowRight, Sparkles, Bot, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface OverlapSummary {
   primaryListeners: string;
@@ -253,6 +253,42 @@ export default function AudienceOverlapCard({
   const [result, setResult] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showDebug, setShowDebug] = useState(false);
+  const [aiInsights, setAiInsights] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [showAiPanel, setShowAiPanel] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const fetchAiInsights = async () => {
+    if (!summary) return;
+    setAiLoading(true);
+    setAiError(null);
+    setShowAiPanel(true);
+    try {
+      const res = await fetch('/api/gemini-insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          primaryArtistName,
+          secondaryArtistName: secondaryName,
+          overlapPct: summary.overlapPct,
+          reverseOverlapPct: summary.reverseOverlapPct ?? 0,
+          sharedListeners: summary.sharedListeners,
+          primaryListeners: summary.primaryListeners,
+          secondaryListeners: summary.secondaryListeners,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setAiError(json.error || 'Error al consultar Gemini');
+      } else {
+        setAiInsights(json.insights);
+      }
+    } catch (e: any) {
+      setAiError(e.message || 'Error de red');
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const runOverlap = async () => {
     if (!primaryArtistId || !secondaryId) return;
@@ -375,6 +411,98 @@ export default function AudienceOverlapCard({
                 )}
               </div>
             </div>
+          </div>
+
+          {/* AI Insights Button & Panel */}
+          <div className="relative">
+            <button
+              onClick={fetchAiInsights}
+              disabled={aiLoading}
+              className="w-full flex items-center justify-center gap-3 py-4 px-6 rounded-2xl font-bold text-sm transition-all duration-300 bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 hover:from-violet-700 hover:via-purple-700 hover:to-indigo-700 text-white shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 disabled:opacity-60 group"
+            >
+              {aiLoading ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Sparkles className="w-5 h-5 group-hover:animate-pulse" />
+              )}
+              {aiLoading ? 'Analizando con Gemini AI...' : '✨ ¿Qué puedo hacer con esto?'}
+              <span className="ml-auto text-xs opacity-70 bg-white/20 px-2 py-0.5 rounded-full">Powered by Gemini</span>
+            </button>
+
+            {showAiPanel && (
+              <div className="mt-4 rounded-2xl border-2 border-purple-200 bg-gradient-to-br from-purple-50 via-white to-indigo-50 overflow-hidden animate-in slide-in-from-top-2 duration-300">
+                <div className="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-violet-100/80 to-indigo-100/80 border-b border-purple-200">
+                  <div className="flex items-center gap-2">
+                    <Bot className="w-5 h-5 text-purple-600" />
+                    <span className="font-bold text-sm text-purple-900">Análisis de Gemini AI</span>
+                    <span className="text-xs bg-purple-200/60 text-purple-700 px-2 py-0.5 rounded-full font-medium">Gemini 2.5 Flash</span>
+                  </div>
+                  <button
+                    onClick={() => setShowAiPanel(false)}
+                    className="text-purple-400 hover:text-purple-600 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="p-5">
+                  {aiLoading && (
+                    <div className="flex flex-col items-center justify-center py-8 gap-3">
+                      <div className="relative">
+                        <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
+                          <Sparkles className="w-6 h-6 text-purple-500 animate-pulse" />
+                        </div>
+                        <div className="absolute -inset-2 rounded-full border-2 border-purple-200 animate-ping opacity-30" />
+                      </div>
+                      <p className="text-sm text-purple-600 font-medium">Gemini está analizando los datos...</p>
+                      <p className="text-xs text-purple-400">Generando recomendaciones accionables</p>
+                    </div>
+                  )}
+
+                  {aiError && (
+                    <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+                      <p className="text-sm text-red-600 font-bold mb-1">Error</p>
+                      <p className="text-xs text-red-500">{aiError}</p>
+                    </div>
+                  )}
+
+                  {aiInsights && !aiLoading && (
+                    <div className="prose prose-sm max-w-none text-gray-700 leading-relaxed"
+                         style={{ whiteSpace: 'pre-wrap' }}
+                    >
+                      {aiInsights.split('\n').map((line, i) => {
+                        if (line.startsWith('## ') || (line.startsWith('**') && line.endsWith('**'))) {
+                          const clean = line.replace(/^##\s*/, '').replace(/\*\*/g, '');
+                          return <h4 key={i} className="font-black text-gray-900 text-sm mt-4 mb-2">{clean}</h4>;
+                        }
+                        if (line.startsWith('# ')) {
+                          const clean = line.replace(/^#\s*/, '');
+                          return <h3 key={i} className="font-black text-gray-900 text-base mt-3 mb-2">{clean}</h3>;
+                        }
+                        if (line.trim().startsWith('- ') || line.trim().startsWith('• ')) {
+                          return (
+                            <div key={i} className="flex items-start gap-2 py-0.5">
+                              <span className="text-purple-400 mt-1 shrink-0">•</span>
+                              <span className="text-sm">{line.replace(/^\s*[-•]\s*/, '').replace(/\*\*(.*?)\*\*/g, '$1')}</span>
+                            </div>
+                          );
+                        }
+                        if (line.trim().match(/^\d+\.\s/)) {
+                          return (
+                            <div key={i} className="flex items-start gap-2 py-0.5 ml-1">
+                              <span className="text-purple-500 font-bold shrink-0 text-xs mt-0.5">{line.trim().match(/^(\d+\.)/)?.[1]}</span>
+                              <span className="text-sm">{line.replace(/^\s*\d+\.\s*/, '').replace(/\*\*(.*?)\*\*/g, '$1')}</span>
+                            </div>
+                          );
+                        }
+                        if (!line.trim()) return <div key={i} className="h-2" />;
+                        return <p key={i} className="text-sm my-1">{line.replace(/\*\*(.*?)\*\*/g, '$1')}</p>;
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Debug panel */}

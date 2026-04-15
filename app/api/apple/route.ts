@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     const audience = buildAudience(artistId || null, dateRange);
     const base = { audience };
 
-    // ── 12 parallel queries ──────────────────────────────────────────────────
+    // ── 14 parallel queries ──────────────────────────────────────────────────
     const [
       tsvTotal,        // group_by artist_id  → KPIs
       tsvTimeSeries,   // group_by date        → time series
@@ -42,6 +42,7 @@ export async function POST(request: Request) {
       tsvEndReason,    // group_by end_reason_type
       tsvContainerType,// group_by container_type
       tsvSubscription, // group_by subscription_type
+      tsvPlaylists,    // group_by container_id (filtered by PLAYLIST)
     ] = await Promise.all([
       safeQuery(token, { ...base, group_by: ['artist_id'] }),
       safeQuery(token, { ...base, group_by: ['date'] }),
@@ -57,6 +58,13 @@ export async function POST(request: Request) {
       safeQuery(token, { ...base, group_by: ['end_reason_type'] }),
       safeQuery(token, { ...base, group_by: ['container_type'] }),
       safeQuery(token, { ...base, group_by: ['subscription_type'] }),
+      safeQuery(token, {
+        audience: {
+          ...base.audience,
+          filter_by: { container_type: ['PLAYLIST'] }
+        },
+        group_by: ['container_id', 'song_id']
+      }),
     ]);
 
     // ── Parse all TSVs ───────────────────────────────────────────────────────
@@ -74,6 +82,7 @@ export async function POST(request: Request) {
     const rowEndReason    = parseTSV(tsvEndReason);
     const rowContainer    = parseTSV(tsvContainerType);
     const rowSubscription = parseTSV(tsvSubscription);
+    const rowPlaylistSongs = parseTSV(tsvPlaylists);
 
     // ── KPIs ────────────────────────────────────────────────────────────────
     const g = rowTotal[0] || {};
@@ -81,11 +90,36 @@ export async function POST(request: Request) {
     const totalListeners = toInt(g.listener_count);
     const hasData = totalStreams > 0;
 
+    // ── Pre-process Playlists for Song IDs ──────────────────────────────────
+    const playlistMap: Record<string, any[]> = {};
+    for (const r of rowPlaylistSongs) {
+      if (!playlistMap[r.container_id]) playlistMap[r.container_id] = [];
+      playlistMap[r.container_id].push({
+        id: r.song_id,
+        name: r.song_name || `Song ${r.song_id}`,
+        streams: toInt(r.play_count),
+        listeners: toInt(r.listener_count),
+      });
+    }
+
+    const topPlaylists = Object.entries(playlistMap)
+      .map(([id, tracks]) => ({
+        id,
+        tracks: tracks.sort((a, b) => b.streams - a.streams),
+        streams: tracks.reduce((s, t) => s + t.streams, 0),
+        listeners: tracks.reduce((s, t) => s + t.listeners, 0),
+      }))
+      .sort((a, b) => b.streams - a.streams)
+      .slice(0, 15);
+
     // ── iTunes lookups for songs & albums (parallel) ──────────────────────
     const topSongRows  = rowSongs.sort((a, b) => toInt(b.play_count) - toInt(a.play_count)).slice(0, 20);
     const topAlbumRows = rowAlbums.sort((a, b) => toInt(b.play_count) - toInt(a.play_count)).slice(0, 12);
 
-    const songIds  = topSongRows.map(r => r.song_id).filter(Boolean);
+    const songIds = Array.from(new Set([
+      ...topSongRows.map(r => r.song_id),
+      ...topPlaylists.flatMap(p => p.tracks.map(t => t.id))
+    ])).filter(Boolean);
     const albumIds = topAlbumRows.map(r => r.album_id).filter(Boolean);
 
     // Artist name from iTunes
@@ -93,10 +127,11 @@ export async function POST(request: Request) {
       ? fetch(`https://itunes.apple.com/lookup?id=${artistId}&entity=musicArtist`).then(r => r.ok ? r.json() : { results: [] }).catch(() => ({ results: [] }))
       : Promise.resolve({ results: [] });
 
-    const [songMeta, albumMeta, itunesArtistRes] = await Promise.all([
+    const [songMeta, albumMeta, itunesArtistRes, itunesPlaylistRes] = await Promise.all([
       itunesLookup(songIds, 'song'),
-      itunesLookup(albumIds, 'album'),
+      itunesLookup(albumIds, 'song'),
       itunesArtistSearch,
+      itunesLookup(topPlaylists.map(r => r.id), 'album')
     ]);
 
     const artistName = (itunesArtistRes.results?.[0]?.artistName) || 'Unknown Artist';
@@ -178,7 +213,7 @@ export async function POST(request: Request) {
       return {
         rank: i + 1,
         songId: r.song_id,
-        name: meta.trackName || r.song_name || `Song ${r.song_id}`,
+        name: meta.trackName || `Song ${r.song_id}`,
         artist: meta.artistName || artistName,
         album: meta.collectionName || '',
         artwork: (meta.artworkUrl100 || '').replace('100x100', '300x300'),
@@ -195,7 +230,7 @@ export async function POST(request: Request) {
       return {
         rank: i + 1,
         albumId: r.album_id,
-        name: meta.collectionName || r.album_name || `Album ${r.album_id}`,
+        name: meta.collectionName || `Album ${r.album_id}`,
         artist: meta.artistName || artistName,
         artwork: (meta.artworkUrl100 || '').replace('100x100', '400x400'),
         releaseDate: meta.releaseDate || '',
@@ -204,6 +239,7 @@ export async function POST(request: Request) {
         pct: calcPct(toInt(r.play_count), totalStreams),
         genre: meta.primaryGenreName || '',
         trackCount: meta.trackCount || 0,
+        previewUrl: meta.previewUrl || '', // itunes lookup for album entity sometimes has a previewUrl if it's a collection
       };
     }).filter(r => r.streams > 0);
 
@@ -314,6 +350,76 @@ export async function POST(request: Request) {
       .filter(r => r.streams > 0)
       .sort((a, b) => b.streams - a.streams);
 
+    // ── Playlists (Journey) Redesign Logic ──────────────────────────────────
+
+    
+    // Fetch real html titles for Apple Music Playlists (starts with pl.)
+    const appleMusicPlaylistTitles: Record<string, string> = {};
+    const appleMusicPlaylistImages: Record<string, string> = {};
+    await Promise.all(topPlaylists.map(async r => {
+      if (r.id?.startsWith('pl.')) {
+        try {
+          // Use universal storefront or no storefront for better resolution
+          const res = await fetch(`https://music.apple.com/playlist/${r.id}`, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' },
+            next: { revalidate: 86400 }
+          });
+          if (res.ok) {
+            const html = await res.text();
+            
+            // Match Title (og:title or <title>)
+            const titleMatch = html.match(/<meta property="?og:title"? content="([^"]+)"/i) || html.match(/<title>(.*?)<\/title>/i);
+            if (titleMatch && titleMatch[1]) {
+              appleMusicPlaylistTitles[r.id] = titleMatch[1]
+                .replace(/ - Playlist - Apple Music$/, '')
+                .replace(/ de Apple Music$/, '')
+                .replace(/ on Apple Music$/, '')
+                .trim();
+            }
+            // Match <meta property="og:image" content="...">
+            const imgMatch = html.match(/<meta property="?og:image"? content="([^"]+)"/);
+            if (imgMatch && imgMatch[1]) {
+              appleMusicPlaylistImages[r.id] = imgMatch[1];
+            } else {
+              // Deep Scrape Fallback: Look for any mzstatic image thumb in the page (imitating DevTools Sources search)
+              const deepMatch = html.match(/https:\/\/is\d+-ssl\.mzstatic\.com\/image\/thumb\/[^"']+\/(?:1024x1024|1200x630)[^"']+/);
+              if (deepMatch) {
+                appleMusicPlaylistImages[r.id] = deepMatch[0];
+              }
+            }
+          }
+        } catch {}
+      }
+    }));
+
+    const playlists = topPlaylists
+      .map(r => {
+        const isNull = !r.id || r.id === 'null';
+        const meta = itunesPlaylistRes[r.id] || {};
+        const htmlTitle = appleMusicPlaylistTitles[r.id];
+        const htmlImage = appleMusicPlaylistImages[r.id];
+        
+        const playlistTracks = r.tracks.map(t => {
+            const sMeta = songMeta[t.id] || {};
+            return {
+              ...t,
+              name: sMeta.trackName || t.name,
+              artwork: sMeta.artworkUrl100 || '',
+            };
+          });
+
+        return {
+          id: r.id,
+          name: isNull ? 'Private User Playlists' : (htmlTitle || meta.collectionName || `User Generated Playlist`),
+          curator: isNull ? 'Various Users' : (meta.artistName || (htmlTitle ? 'Apple Music' : 'Unknown Curator')),
+          artwork: isNull ? '' : (htmlImage || (meta.artworkUrl100 || '').replace('100x100', '300x300')),
+          streams: r.streams,
+          listeners: r.listeners,
+          tracks: playlistTracks,
+        };
+      })
+      .filter(r => r.streams > 0);
+
     // ── Response ────────────────────────────────────────────────────────────
     return NextResponse.json({
       success: true,
@@ -347,6 +453,7 @@ export async function POST(request: Request) {
       endReasons,
       containerTypes,
       subscriptions,
+      playlists,
     });
 
   } catch (err: any) {
