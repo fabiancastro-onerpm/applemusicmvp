@@ -27,45 +27,44 @@ export async function POST(request: Request) {
     const base = { audience };
 
     // ── 14 parallel queries ──────────────────────────────────────────────────
+    let results;
+    try {
+      results = await Promise.all([
+        safeQuery(token, { ...base, group_by: ['artist_id'] }),
+        safeQuery(token, { ...base, group_by: ['date'] }),
+        safeQuery(token, { ...base, group_by: ['storefront'] }),
+        safeQuery(token, { ...base, group_by: ['consumer_city'] }),
+        safeQuery(token, { ...base, group_by: ['age_bucket'] }),
+        safeQuery(token, { ...base, group_by: ['gender'] }),
+        safeQuery(token, { ...base, group_by: ['song_id'] }),
+        safeQuery(token, { ...base, group_by: ['album_id'] }),
+        safeQuery(token, { ...base, group_by: ['source_of_stream'] }),
+        safeQuery(token, { ...base, group_by: ['device_os'] }),
+        safeQuery(token, { ...base, group_by: ['audio_format'] }),
+        safeQuery(token, { ...base, group_by: ['end_reason_type'] }),
+        safeQuery(token, { ...base, group_by: ['container_type'] }),
+        safeQuery(token, { ...base, group_by: ['subscription_type'] }),
+        safeQuery(token, {
+          audience: {
+            ...base.audience,
+            filter_by: { container_type: ['PLAYLIST'] }
+          },
+          group_by: ['container_id', 'song_id']
+        }),
+      ]);
+    } catch (err: any) {
+      console.error('Apple API Query Error:', err.message);
+      return NextResponse.json({ 
+        success: false, 
+        error: `Apple API Error: ${err.message}. Check your Content Provider ID and permissions.` 
+      }, { status: 500 });
+    }
+
     const [
-      tsvTotal,        // group_by artist_id  → KPIs
-      tsvTimeSeries,   // group_by date        → time series
-      tsvStorefront,   // group_by storefront  → global distribution
-      tsvCities,       // group_by consumer_city
-      tsvAge,          // group_by age_bucket
-      tsvGender,       // group_by gender
-      tsvSongs,        // group_by song_id
-      tsvAlbums,       // group_by album_id
-      tsvSourceStream, // group_by source_of_stream
-      tsvDeviceOS,     // group_by device_os
-      tsvAudioFmt,     // group_by audio_format
-      tsvEndReason,    // group_by end_reason_type
-      tsvContainerType,// group_by container_type
-      tsvSubscription, // group_by subscription_type
-      tsvPlaylists,    // group_by container_id (filtered by PLAYLIST)
-    ] = await Promise.all([
-      safeQuery(token, { ...base, group_by: ['artist_id'] }),
-      safeQuery(token, { ...base, group_by: ['date'] }),
-      safeQuery(token, { ...base, group_by: ['storefront'] }),
-      safeQuery(token, { ...base, group_by: ['consumer_city'] }),
-      safeQuery(token, { ...base, group_by: ['age_bucket'] }),
-      safeQuery(token, { ...base, group_by: ['gender'] }),
-      safeQuery(token, { ...base, group_by: ['song_id'] }),
-      safeQuery(token, { ...base, group_by: ['album_id'] }),
-      safeQuery(token, { ...base, group_by: ['source_of_stream'] }),
-      safeQuery(token, { ...base, group_by: ['device_os'] }),
-      safeQuery(token, { ...base, group_by: ['audio_format'] }),
-      safeQuery(token, { ...base, group_by: ['end_reason_type'] }),
-      safeQuery(token, { ...base, group_by: ['container_type'] }),
-      safeQuery(token, { ...base, group_by: ['subscription_type'] }),
-      safeQuery(token, {
-        audience: {
-          ...base.audience,
-          filter_by: { container_type: ['PLAYLIST'] }
-        },
-        group_by: ['container_id', 'song_id']
-      }),
-    ]);
+      tsvTotal, tsvTimeSeries, tsvStorefront, tsvCities, tsvAge,
+      tsvGender, tsvSongs, tsvAlbums, tsvSourceStream, tsvDeviceOS,
+      tsvAudioFmt, tsvEndReason, tsvContainerType, tsvPlaylists, tsvPlaylistSongs
+    ] = results;
 
     // ── Parse all TSVs ───────────────────────────────────────────────────────
     const rowTotal        = parseTSV(tsvTotal);

@@ -62,8 +62,9 @@ export async function queryAudienceOverlap(
 export async function safeQuery(token: string, payload: object): Promise<string> {
   try {
     return await queryAudienceEngagement(token, payload);
-  } catch {
-    return '';
+  } catch (err: any) {
+    console.error("Apple Analytics Query Failed:", err.message);
+    throw err;
   }
 }
 

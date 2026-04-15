@@ -26,7 +26,7 @@ export function generateAppleDeveloperToken() {
     const iat = Math.floor(Date.now() / 1000) - 60; // 1 min buffer for clock drift
     const payload = {
       iss: APPLE_ISSUER_ID,
-      aud: 'appstoreconnect-v1',
+      aud: 'mr-v1', // Analytics API often requires mr-v1 instead of appstoreconnect-v1
       iat: iat,
       exp: iat + (15 * 60) + 60, // Total 15 mins + buffer
     };
@@ -42,3 +42,4 @@ export function generateAppleDeveloperToken() {
     return null;
   }
 }
+
