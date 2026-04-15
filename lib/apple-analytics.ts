@@ -151,8 +151,8 @@ export function buildAudience(
     played_in_range: { ...dateRange, time_zone: 'UTC' },
   };
   if (artistId) {
-    // For Analytics API v4, filter_by is more universal and robust
-    aud.filter_by = { artist_id: [artistId] };
+    // Reverting to the original working 'ids' structure
+    aud.ids = { entity: 'artist_id', values: [parseInt(artistId)] };
   }
   return aud;
 }
