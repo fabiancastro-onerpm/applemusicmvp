@@ -14,7 +14,22 @@ export function generateAppleDeveloperToken() {
     return null;
   }
 
+  // Aggressive Sanitization for Vercel Environment Variables
+  if (APPLE_PRIVATE_KEY.startsWith('"') && APPLE_PRIVATE_KEY.endsWith('"')) {
+    APPLE_PRIVATE_KEY = APPLE_PRIVATE_KEY.slice(1, -1);
+  }
+  if (APPLE_PRIVATE_KEY.startsWith("'") && APPLE_PRIVATE_KEY.endsWith("'")) {
+    APPLE_PRIVATE_KEY = APPLE_PRIVATE_KEY.slice(1, -1);
+  }
+  
+  // Replace escaped newlines with real newlines
   APPLE_PRIVATE_KEY = APPLE_PRIVATE_KEY.replace(/\\n/g, '\n');
+
+  // Verify it looks like a PEM key
+  if (!APPLE_PRIVATE_KEY.includes('BEGIN PRIVATE KEY')) {
+    console.error("Apple Private Key format error: Missing BEGIN PRIVATE KEY header.");
+    return null;
+  }
 
   try {
     const header = {
