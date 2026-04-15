@@ -1,49 +1,37 @@
-# ONErpm Apple Music Analytics MVP 🍎🚀
+# Apple Music Intelligence Hub (MVP)
 
-A high-intelligence dashboard designed for professional music executives. This MVP transforms raw Apple Music Analytics data into actionable intelligence, featuring deep playlist tracking and AI-driven artist insights.
+Herramienta profesional de análisis de datos para artistas y tracks con alta granularidad, diseñada específicamente para múltiples stakeholders dentro de la industria musical (A&R, Project Managers, Marketing y Data Analysts).
 
-## ✨ Key Features
+Este MVP permite una visualización profunda de métricas en tiempo real directamente desde la API de Apple Music Analytics, facilitando la toma de decisiones estratégicas basadas en el comportamiento real de la audiencia.
 
-- **Playlist Journey (A&R Intelligence)**: Track track-level performance across all playlists. Includes a "Deep Scraper" that retrieves official covers and titles even for obscure/user-generated lists.
-- **Audience Overlap (Gemini AI)**: Integrated with Google Gemini 2.5 Flash to provide strategic A&R insights on artist collaborations and fan-base synergy.
-- **Granular Metrics**: Real-time analysis of Streams vs. Listeners, Global Distribution, Demographics, and Audio Format quality.
-- **Privacy First**: Fully operational as a standalone dashboard with local session security.
-- **Custom Overrides**: Allows A&R managers to manually "bridge" missing metadata for a 100% visual experience during presentations.
+## 🚀 Beneficios Clave
 
-## 🛠 Tech Stack
+- **Granularidad Extrema**: Visualización de streams por ciudad, dispositivo, formato de audio y tipo de suscripción.
+- **Audience Affinity (Overlap)**: Identificación de solapamiento de audiencia entre artistas para detectar oportunidades de colaboración.
+- **A&R Insights con IA**: Generación de recomendaciones accionables utilizando Gemini AI (Flash 2.5) para interpretar los datos de afinidad.
+- **Playlist Journey**: Seguimiento detallado del impacto de las playlists en el consumo del artista con sistema de recuperación profunda de metadatos.
+- **Interfaz Premium**: Dashboard centralizado con navegación intuitiva y visualizaciones dinámicas.
 
-- **Framework**: Next.js 14+ (App Router)
-- **Styling**: Tailwind CSS (Premium Aesthetic)
-- **APIs**:
-  - Apple Music Analytics API (v4)
-  - iTunes Search API (Metadata enrichment)
-  - Google Gemini 2.5 Flash (AI Insights)
+## 🛠 Configuración Técnica
 
-## 🚀 Getting Started
+Para ejecutar este proyecto localmente, asegúrate de configurar las siguientes variables de entorno en un archivo `.env.local`:
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/fabiancastroch/applemusicmvp.git
-   ```
+```env
+# Apple Music API Credentials
+APPLE_KEY_ID=tu_key_id
+APPLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\ntu_llave_privada\n-----END PRIVATE KEY-----"
+APPLE_UUID=tu_issuer_id
+APPLE_CONTENT_PROVIDER_ID=tu_provider_id
 
-2. **Install dependencies**:
-   ```bash
-   npm install
-   ```
+# Gemini AI (For A&R Insights)
+GEMINI_API_KEY=tu_gemini_api_key
+```
 
-3. **Configure Environment**:
-   Create a `.env.local` file based on `.env.example` with your Apple Developer and Gemini credentials.
+## 📦 Instalación y Uso
 
-4. **Run development mode**:
-   ```bash
-   npm run dev
-   ```
-
-## 📈 Benefits for ONErpm
-
-- **Strategic Decision Making**: Identify exactly which tracks are driving playlist growth.
-- **Automated Reporting**: No more manual spreadsheet mapping for Apple Analytics.
-- **AI Collaboration Scouting**: Leverage LLMs to find the perfect collaboration match based on fan behavior.
+1. Instalar dependencias: `npm install`
+2. Iniciar servidor de desarrollo: `npm run dev`
+3. Abrir en el navegador: `http://localhost:3000`
 
 ---
-*Developed by Fabian Castro for ONErpm teams.*
+*Desarrollado para ONErpm por el equipo de Advanced Analytics.*
