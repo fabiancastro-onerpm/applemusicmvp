@@ -16,7 +16,7 @@ export function parseTSV(tsvText: string): Record<string, string>[] {
 
 // ─── APPLE API FETCH ───────────────────────────────────────────────────────────
 const APPLE_ENDPOINT = 'https://musicanalytics.apple.com/v4/queries';
-const CONTENT_PROVIDER_ID = process.env.APPLE_CONTENT_PROVIDER_ID || '293764';
+const CONTENT_PROVIDER_ID = (process.env.APPLE_CONTENT_PROVIDER_ID || '293764').trim();
 
 export function buildHeaders(token: string) {
   return {
@@ -37,6 +37,7 @@ export async function queryAudienceEngagement(
   });
   if (!res.ok) {
     const err = await res.text();
+    console.error(`Apple API Error ${res.status} [${res.url}]:`, err);
     throw new Error(`Apple API ${res.status}: ${err}`);
   }
   return res.text();

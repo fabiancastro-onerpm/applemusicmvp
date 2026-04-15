@@ -5,12 +5,12 @@ import jwt from 'jsonwebtoken';
  * This should ONLY be run on the server.
  */
 export function generateAppleDeveloperToken() {
-  const APPLE_KEY_ID = process.env.APPLE_KEY_ID;
-  const APPLE_ISSUER_ID = process.env.APPLE_UUID; // MUST use UUID for Analytics!
-  let APPLE_PRIVATE_KEY = process.env.APPLE_PRIVATE_KEY;
+  const APPLE_KEY_ID = process.env.APPLE_KEY_ID?.trim();
+  const APPLE_ISSUER_ID = process.env.APPLE_UUID?.trim(); 
+  let APPLE_PRIVATE_KEY = process.env.APPLE_PRIVATE_KEY?.trim();
 
   if (!APPLE_KEY_ID || !APPLE_ISSUER_ID || !APPLE_PRIVATE_KEY) {
-    console.error("Missing Apple Analytics API environment variables.");
+    console.error("Missing Apple Analytics API environment variables. (Details: ID="+(!!APPLE_KEY_ID)+", ISS="+(!!APPLE_ISSUER_ID)+", KEY="+(!!APPLE_PRIVATE_KEY)+")");
     return null;
   }
 

@@ -63,7 +63,7 @@ export async function POST(request: Request) {
     const [
       tsvTotal, tsvTimeSeries, tsvStorefront, tsvCities, tsvAge,
       tsvGender, tsvSongs, tsvAlbums, tsvSourceStream, tsvDeviceOS,
-      tsvAudioFmt, tsvEndReason, tsvContainerType, tsvPlaylists, tsvPlaylistSongs
+      tsvAudioFmt, tsvEndReason, tsvContainerType, tsvSubscription, tsvPlaylists
     ] = results;
 
     // ── Parse all TSVs ───────────────────────────────────────────────────────
