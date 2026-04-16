@@ -16,13 +16,13 @@ export function parseTSV(tsvText: string): Record<string, string>[] {
 
 // ─── APPLE API FETCH ───────────────────────────────────────────────────────────
 const APPLE_ENDPOINT = 'https://musicanalytics.apple.com/v4/queries';
-const CONTENT_PROVIDER_ID = (process.env.APPLE_CONTENT_PROVIDER_ID || '293764').trim();
+// const CONTENT_PROVIDER_ID = (process.env.APPLE_CONTENT_PROVIDER_ID || '').trim();
 
 export function buildHeaders(token: string) {
   return {
     'Authorization': `Bearer ${token}`,
     'Content-Type': 'application/json',
-    'X-Apple-MusicAnalytics-ContentProviderID': CONTENT_PROVIDER_ID,
+    'X-Apple-MusicAnalytics-ContentProviderID': (process.env.APPLE_CONTENT_PROVIDER_ID || '').trim(),
   };
 }
 

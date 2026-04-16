@@ -435,7 +435,7 @@ export default function AudienceOverlapCard({
                   <div className="flex items-center gap-2">
                     <Bot className="w-5 h-5 text-purple-600" />
                     <span className="font-bold text-sm text-purple-900">Gemini AI Analysis</span>
-                    <span className="text-xs bg-purple-200/60 text-purple-700 px-2 py-0.5 rounded-full font-medium">Gemini 1.5 Flash</span>
+                    <span className="text-xs bg-purple-200/60 text-purple-700 px-2 py-0.5 rounded-full font-medium">Gemini 2.5 Flash</span>
                   </div>
                   <button
                     onClick={() => setShowAiPanel(false)}

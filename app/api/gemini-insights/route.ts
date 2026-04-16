@@ -61,9 +61,19 @@ Keep each section brief and to the point. Do not exceed 400 words total.`;
     if (!geminiRes.ok) {
       const errText = await geminiRes.text();
       console.error('Gemini API error:', errText);
+      
+      let friendlyMessage = 'Ocurrió un problema técnico con el análisis de IA. Por favor, intenta de nuevo.';
+      if (geminiRes.status === 503) {
+        friendlyMessage = 'El servidor de la IA está muy ocupado en este momento. Por favor, espera unos segundos e intenta de nuevo.';
+      } else if (geminiRes.status === 429) {
+        friendlyMessage = 'Hemos alcanzado el límite de consultas permitidas. Danos un breve respiro e intenta de nuevo.';
+      } else if (geminiRes.status === 404) {
+        friendlyMessage = 'No se encontró el motor de análisis solicitado. Es posible que el servicio esté en mantenimiento.';
+      }
+
       return NextResponse.json(
-        { error: `Gemini API error: ${geminiRes.status}` },
-        { status: 502 }
+        { error: friendlyMessage },
+        { status: 200 } // Return 200 so the frontend can display the message without generic error handling
       );
     }
 
